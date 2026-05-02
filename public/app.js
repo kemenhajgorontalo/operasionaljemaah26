@@ -1,5 +1,4 @@
 const CONFIG = window.APP_CONFIG || {};
-const LOCAL_ACTIVITY_KEY = "asramahaji_activity_cache";
 const HANDOVER_LABELS = {
   living_cost: "Living Cost",
   accommodation_card: "Kartu Akomodasi",
@@ -89,7 +88,6 @@ const refs = {
   activityPrev: document.getElementById("activity-prev"),
   activityNext: document.getElementById("activity-next"),
   activityPageInfo: document.getElementById("activity-page-info"),
-  clearLocal: document.getElementById("clear-local"),
   gallerySyncStatus: document.getElementById("gallery-sync-status"),
   refreshGallery: document.getElementById("refresh-gallery"),
   gallerySearch: document.getElementById("gallery-search"),
@@ -248,13 +246,6 @@ function bindEvents() {
   refs.activityNext.addEventListener("click", () => {
     activityCurrentPage += 1;
     renderActivities();
-  });
-  refs.clearLocal.addEventListener("click", () => {
-    localStorage.removeItem(LOCAL_ACTIVITY_KEY);
-    recentActivities = [];
-    activityCurrentPage = 1;
-    renderActivities();
-    showToast("Cache aktivitas lokal dibersihkan.");
   });
 }
 
@@ -474,13 +465,8 @@ async function submitWithPhoto(form, photo, payload, collectionName, label) {
 
     await saveRecord(collectionName, record, localRecord);
     addRecordToMemory(collectionName, localRecord);
-    addLocalActivity({
-      label,
-      title: payload.pilgrimName || payload.title || payload.roomId || payload.category,
-      subtitle: `${payload.officerName} · ${new Date(record.createdAt).toLocaleString("id-ID")}`,
-      collectionName
-    });
     showToast(uploadedPhoto ? `${label} tersimpan.` : `${label} tersimpan lokal. Cloudinary belum aktif.`);
+    loadRecentActivities();
     renderGalleryPage();
     return true;
   } catch (err) {
@@ -1211,17 +1197,6 @@ function renderActivities() {
   refs.activityNext.disabled = activityCurrentPage >= totalPages;
 }
 
-function addLocalActivity(item) {
-  const stampedItem = {
-    ...item,
-    time: item.time || Date.now()
-  };
-  recentActivities = [stampedItem, ...recentActivities].slice(0, 100);
-  localStorage.setItem(LOCAL_ACTIVITY_KEY, JSON.stringify(recentActivities.slice(0, 50)));
-  activityCurrentPage = 1;
-  renderActivities();
-}
-
 function buildRecentActivities() {
   const rows = [
     ...allRecords.handover.map((row) => ({
@@ -1251,10 +1226,6 @@ function buildRecentActivities() {
       subtitle: `${row.officerName || "Petugas"} · ${formatRecordDate(row)}`,
       collectionName: CONFIG.COLLECTIONS?.GALLERY || "gallery_photos",
       time: getRecordTime(row)
-    })),
-    ...getLocalActivities().map((row) => ({
-      ...row,
-      time: getRecordTime(row)
     }))
   ];
 
@@ -1269,10 +1240,6 @@ function buildRecentActivities() {
     })
     .sort((a, b) => b.time - a.time)
     .slice(0, 100);
-}
-
-function getLocalActivities() {
-  return JSON.parse(localStorage.getItem(LOCAL_ACTIVITY_KEY) || "[]");
 }
 
 function cachePendingRecord(collectionName, record) {

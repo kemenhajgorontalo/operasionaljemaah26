@@ -15,6 +15,14 @@ let rooms = [];
 let selectedPilgrim = null;
 let selectedPilgrimId = "";
 let recentActivities = [];
+let cameraStream = null;
+let activeCaptureTarget = "";
+const capturedPhotos = {
+  handover: null,
+  room: null,
+  lost: null,
+  gallery: null
+};
 
 const refs = {
   officerName: document.getElementById("officer-name"),
@@ -31,30 +39,36 @@ const refs = {
   detailAccommodation: document.getElementById("detail-accommodation"),
   handoverForm: document.getElementById("handover-form"),
   handoverType: document.getElementById("handover-type"),
-  handoverPhoto: document.getElementById("handover-photo"),
+  handoverPreview: document.getElementById("handover-preview"),
   handoverNote: document.getElementById("handover-note"),
   roomForm: document.getElementById("room-form"),
   roomSelect: document.getElementById("room-select"),
-  roomPhoto: document.getElementById("room-photo"),
+  roomPreview: document.getElementById("room-preview"),
   roomNote: document.getElementById("room-note"),
   lostForm: document.getElementById("lost-form"),
   lostTitle: document.getElementById("lost-title"),
   lostStatus: document.getElementById("lost-status"),
-  lostPhoto: document.getElementById("lost-photo"),
+  lostPreview: document.getElementById("lost-preview"),
   lostNote: document.getElementById("lost-note"),
   galleryForm: document.getElementById("gallery-form"),
   galleryCategory: document.getElementById("gallery-category"),
-  galleryPhoto: document.getElementById("gallery-photo"),
+  galleryPreview: document.getElementById("gallery-preview"),
   galleryNote: document.getElementById("gallery-note"),
   activityList: document.getElementById("activity-list"),
   clearLocal: document.getElementById("clear-local"),
-  toast: document.getElementById("toast")
+  toast: document.getElementById("toast"),
+  cameraModal: document.getElementById("camera-modal"),
+  cameraTitle: document.getElementById("camera-title"),
+  cameraVideo: document.getElementById("camera-video"),
+  cameraCanvas: document.getElementById("camera-canvas"),
+  cameraClose: document.getElementById("camera-close"),
+  cameraCancel: document.getElementById("camera-cancel"),
+  cameraShot: document.getElementById("camera-shot")
 };
 
 document.addEventListener("DOMContentLoaded", init);
 
 async function init() {
-  enforceRearCameraInputs();
   refs.officerName.value = localStorage.getItem("asramahaji_officer_name") || "";
   refs.officerName.addEventListener("input", () => {
     localStorage.setItem("asramahaji_officer_name", refs.officerName.value.trim());
@@ -68,13 +82,6 @@ async function init() {
   renderRooms();
   renderPilgrims();
   await loadRecentActivities();
-}
-
-function enforceRearCameraInputs() {
-  [refs.handoverPhoto, refs.roomPhoto, refs.lostPhoto, refs.galleryPhoto].forEach((input) => {
-    input.setAttribute("accept", "image/*");
-    input.setAttribute("capture", "environment");
-  });
 }
 
 async function loadSeedData() {
@@ -114,6 +121,15 @@ function bindEvents() {
   refs.roomForm.addEventListener("submit", handleRoomSubmit);
   refs.lostForm.addEventListener("submit", handleLostSubmit);
   refs.galleryForm.addEventListener("submit", handleGallerySubmit);
+  document.querySelectorAll("[data-camera-target]").forEach((button) => {
+    button.addEventListener("click", () => openCamera(button.dataset.cameraTarget));
+  });
+  refs.cameraClose.addEventListener("click", closeCamera);
+  refs.cameraCancel.addEventListener("click", closeCamera);
+  refs.cameraShot.addEventListener("click", captureActivePhoto);
+  refs.cameraModal.addEventListener("click", (event) => {
+    if (event.target === refs.cameraModal) closeCamera();
+  });
   refs.clearLocal.addEventListener("click", () => {
     localStorage.removeItem(LOCAL_ACTIVITY_KEY);
     recentActivities = [];
@@ -242,8 +258,9 @@ async function handleHandoverSubmit(event) {
     source: "web"
   };
 
-  await submitWithPhoto(refs.handoverForm, refs.handoverPhoto.files[0], payload, CONFIG.COLLECTIONS?.HANDOVER || "handover_records", HANDOVER_LABELS[payload.type]);
+  await submitWithPhoto(refs.handoverForm, capturedPhotos.handover, payload, CONFIG.COLLECTIONS?.HANDOVER || "handover_records", HANDOVER_LABELS[payload.type]);
   refs.handoverForm.reset();
+  clearCapturedPhoto("handover");
 }
 
 async function handleRoomSubmit(event) {
@@ -264,8 +281,9 @@ async function handleRoomSubmit(event) {
     source: "web"
   };
 
-  await submitWithPhoto(refs.roomForm, refs.roomPhoto.files[0], payload, CONFIG.COLLECTIONS?.ROOM_DELIVERIES || "room_deliveries", "Distribusi Kamar");
+  await submitWithPhoto(refs.roomForm, capturedPhotos.room, payload, CONFIG.COLLECTIONS?.ROOM_DELIVERIES || "room_deliveries", "Distribusi Kamar");
   refs.roomForm.reset();
+  clearCapturedPhoto("room");
   renderRooms();
 }
 
@@ -279,8 +297,9 @@ async function handleLostSubmit(event) {
     source: "web"
   };
 
-  await submitWithPhoto(refs.lostForm, refs.lostPhoto.files[0], payload, CONFIG.COLLECTIONS?.LOST_FOUND || "lost_found", "Lost and Found");
+  await submitWithPhoto(refs.lostForm, capturedPhotos.lost, payload, CONFIG.COLLECTIONS?.LOST_FOUND || "lost_found", "Lost and Found");
   refs.lostForm.reset();
+  clearCapturedPhoto("lost");
 }
 
 async function handleGallerySubmit(event) {
@@ -292,22 +311,24 @@ async function handleGallerySubmit(event) {
     source: "web"
   };
 
-  await submitWithPhoto(refs.galleryForm, refs.galleryPhoto.files[0], payload, CONFIG.COLLECTIONS?.GALLERY || "gallery_photos", "Galeri");
+  await submitWithPhoto(refs.galleryForm, capturedPhotos.gallery, payload, CONFIG.COLLECTIONS?.GALLERY || "gallery_photos", "Galeri");
   refs.galleryForm.reset();
+  clearCapturedPhoto("gallery");
 }
 
-async function submitWithPhoto(form, file, payload, collectionName, label) {
-  if (!file) return showToast("Foto wajib diisi.", "error");
+async function submitWithPhoto(form, photo, payload, collectionName, label) {
+  if (!photo?.blob) return showToast("Foto wajib diambil dari kamera.", "error");
   const button = form.querySelector("button[type='submit']");
   setBusy(button, true);
 
   try {
-    const photo = await uploadPhoto(file, payload, collectionName);
+    const uploadedPhoto = await uploadPhoto(photo.blob, payload, collectionName);
     const record = {
       ...payload,
-      photoUrl: photo?.secure_url || "",
-      photoPublicId: photo?.public_id || "",
-      photoStatus: photo ? "uploaded" : "local_only",
+      photoUrl: uploadedPhoto?.secure_url || photo.dataUrl,
+      photoPublicId: uploadedPhoto?.public_id || "",
+      photoStatus: uploadedPhoto ? "uploaded" : "local_only",
+      watermark: photo.watermark,
       createdAt: new Date().toISOString()
     };
 
@@ -346,6 +367,210 @@ async function uploadPhoto(file, payload, collectionName) {
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(body.error?.message || "Upload Cloudinary gagal.");
   return body;
+}
+
+async function openCamera(target) {
+  activeCaptureTarget = target;
+  refs.cameraTitle.textContent = getCaptureTitle(target);
+  refs.cameraModal.classList.remove("hidden");
+  refs.cameraModal.setAttribute("aria-hidden", "false");
+
+  try {
+    cameraStream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: { ideal: "environment" },
+        width: { ideal: 1600 },
+        height: { ideal: 1200 }
+      },
+      audio: false
+    });
+    refs.cameraVideo.srcObject = cameraStream;
+    await waitForVideoReady();
+  } catch (err) {
+    console.error(err);
+    closeCamera();
+    showToast("Kamera tidak dapat dibuka. Pastikan izin kamera aktif.", "error");
+  }
+}
+
+function closeCamera() {
+  if (cameraStream) {
+    cameraStream.getTracks().forEach((track) => track.stop());
+    cameraStream = null;
+  }
+  refs.cameraVideo.removeAttribute("srcObject");
+  refs.cameraVideo.srcObject = null;
+  refs.cameraModal.classList.add("hidden");
+  refs.cameraModal.setAttribute("aria-hidden", "true");
+}
+
+async function captureActivePhoto() {
+  if (!activeCaptureTarget || !refs.cameraVideo.videoWidth) {
+    showToast("Kamera belum siap.", "error");
+    return;
+  }
+
+  const payload = buildWatermarkPayload(activeCaptureTarget);
+  const photo = await createWatermarkedPhoto(payload);
+  capturedPhotos[activeCaptureTarget] = photo;
+  renderCapturePreview(activeCaptureTarget, photo.dataUrl);
+  closeCamera();
+  showToast("Foto berhasil diambil.");
+}
+
+function waitForVideoReady() {
+  if (refs.cameraVideo.readyState >= 2 && refs.cameraVideo.videoWidth) return Promise.resolve();
+
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      cleanup();
+      reject(new Error("Kamera belum siap."));
+    }, 7000);
+
+    function cleanup() {
+      clearTimeout(timeout);
+      refs.cameraVideo.removeEventListener("loadedmetadata", onReady);
+      refs.cameraVideo.removeEventListener("canplay", onReady);
+    }
+
+    function onReady() {
+      if (refs.cameraVideo.videoWidth) {
+        cleanup();
+        resolve();
+      }
+    }
+
+    refs.cameraVideo.addEventListener("loadedmetadata", onReady);
+    refs.cameraVideo.addEventListener("canplay", onReady);
+  });
+}
+
+async function createWatermarkedPhoto(payload) {
+  const video = refs.cameraVideo;
+  const canvas = refs.cameraCanvas;
+  const ctx = canvas.getContext("2d");
+  const maxWidth = 1600;
+  const scale = Math.min(1, maxWidth / video.videoWidth);
+  canvas.width = Math.round(video.videoWidth * scale);
+  canvas.height = Math.round(video.videoHeight * scale);
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  drawWatermark(ctx, canvas, payload);
+
+  const dataUrl = canvas.toDataURL("image/jpeg", 0.88);
+  const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.88));
+  return {
+    blob,
+    dataUrl,
+    watermark: payload
+  };
+}
+
+function drawWatermark(ctx, canvas, payload) {
+  const w = canvas.width;
+  const h = canvas.height;
+  const pad = Math.max(18, Math.round(w * 0.024));
+  const titleSize = Math.max(22, Math.round(w * 0.03));
+  const textSize = Math.max(17, Math.round(w * 0.021));
+  const lineGap = Math.round(textSize * 1.35);
+  const lines = [
+    payload.title,
+    payload.subject,
+    payload.location,
+    `Petugas: ${payload.officerName}`,
+    `Waktu: ${payload.timestampDisplay}`
+  ].filter(Boolean);
+  const boxHeight = pad * 2 + titleSize + lineGap * (lines.length - 1);
+  const y = h - boxHeight;
+
+  const gradient = ctx.createLinearGradient(0, y, 0, h);
+  gradient.addColorStop(0, "rgba(0,0,0,0.18)");
+  gradient.addColorStop(0.32, "rgba(0,0,0,0.68)");
+  gradient.addColorStop(1, "rgba(0,0,0,0.86)");
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, y, w, boxHeight);
+
+  ctx.fillStyle = "rgba(255,255,255,0.96)";
+  ctx.font = `700 ${titleSize}px Arial, Helvetica, sans-serif`;
+  ctx.fillText(lines[0], pad, y + pad + titleSize);
+
+  ctx.font = `500 ${textSize}px Arial, Helvetica, sans-serif`;
+  lines.slice(1).forEach((line, index) => {
+    ctx.fillText(line, pad, y + pad + titleSize + lineGap * (index + 1));
+  });
+
+  ctx.fillStyle = "#c69837";
+  ctx.fillRect(pad, y + pad - 8, Math.min(210, w * 0.18), 5);
+}
+
+function buildWatermarkPayload(target) {
+  const now = new Date();
+  const title = getCaptureTitle(target);
+  const base = {
+    title,
+    officerName: getOfficerName(),
+    timestamp: now.toISOString(),
+    timestampDisplay: now.toLocaleString("id-ID", {
+      dateStyle: "medium",
+      timeStyle: "medium",
+      timeZone: "Asia/Makassar"
+    })
+  };
+
+  if (target === "handover" && selectedPilgrim) {
+    return {
+      ...base,
+      subject: `${selectedPilgrim.name} · Porsi ${selectedPilgrim.noPorsi}`,
+      location: `${selectedPilgrim.kloterLabel} · ${formatRoom(selectedPilgrim)}`
+    };
+  }
+
+  if (target === "room") {
+    const room = rooms.find((item) => item.id === refs.roomSelect.value);
+    return {
+      ...base,
+      subject: room ? `Kloter ${room.kloter} · ${room.pilgrims.length} jemaah` : "Kamar belum dipilih",
+      location: room ? `${room.hotel} · Lt ${room.floor} · Kamar ${room.room}` : ""
+    };
+  }
+
+  if (target === "lost") {
+    return {
+      ...base,
+      subject: refs.lostTitle.value.trim() || "Barang temuan",
+      location: `Status: ${refs.lostStatus.options[refs.lostStatus.selectedIndex]?.text || refs.lostStatus.value}`
+    };
+  }
+
+  return {
+    ...base,
+    subject: refs.galleryCategory.options[refs.galleryCategory.selectedIndex]?.text || "Galeri",
+    location: "Dokumentasi kegiatan"
+  };
+}
+
+function getCaptureTitle(target) {
+  const titles = {
+    handover: `Bukti ${HANDOVER_LABELS[refs.handoverType.value] || "Serah Terima"}`,
+    room: "Distribusi Koper per Kamar",
+    lost: "Lost and Found",
+    gallery: "Galeri Foto"
+  };
+  return titles[target] || "Ambil Foto";
+}
+
+function renderCapturePreview(target, dataUrl) {
+  const preview = refs[`${target}Preview`];
+  if (!preview) return;
+  preview.src = dataUrl;
+  preview.classList.remove("hidden");
+}
+
+function clearCapturedPhoto(target) {
+  capturedPhotos[target] = null;
+  const preview = refs[`${target}Preview`];
+  if (!preview) return;
+  preview.removeAttribute("src");
+  preview.classList.add("hidden");
 }
 
 async function saveRecord(collectionName, record) {

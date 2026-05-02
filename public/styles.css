@@ -275,7 +275,8 @@ textarea {
 }
 
 .primary-btn,
-.ghost-btn {
+.ghost-btn,
+.camera-btn {
   border: 0;
   border-radius: 7px;
   min-height: 48px;
@@ -298,6 +299,21 @@ textarea {
 .ghost-btn {
   background: #eef3f0;
   color: var(--green-dark);
+}
+
+.camera-btn {
+  border: 1px solid var(--green);
+  background: #eef8f3;
+  color: var(--green-dark);
+}
+
+.capture-preview {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  object-fit: cover;
+  background: #eef3f0;
 }
 
 .empty-state {
@@ -336,6 +352,63 @@ textarea {
 
 .toast.error {
   background: var(--danger);
+}
+
+.camera-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 10px;
+  background: rgba(0, 0, 0, 0.82);
+}
+
+.camera-panel {
+  width: min(100%, 720px);
+  max-height: calc(100vh - 20px);
+  display: grid;
+  gap: 10px;
+  background: #101816;
+  border-radius: 10px;
+  padding: 10px;
+  color: #fff;
+}
+
+.camera-head,
+.camera-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+}
+
+.camera-head strong {
+  font-size: 0.95rem;
+}
+
+.camera-head button {
+  width: 42px;
+  height: 42px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  font-size: 1.7rem;
+  line-height: 1;
+}
+
+#camera-video {
+  width: 100%;
+  max-height: calc(100vh - 180px);
+  aspect-ratio: 3 / 4;
+  object-fit: cover;
+  border-radius: 8px;
+  background: #000;
+}
+
+.camera-actions > * {
+  flex: 1;
 }
 
 .hidden {
@@ -388,5 +461,9 @@ textarea {
 
   .pilgrim-list {
     max-height: 72vh;
+  }
+
+  #camera-video {
+    aspect-ratio: 4 / 3;
   }
 }

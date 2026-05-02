@@ -54,6 +54,12 @@
 
     <section id="summary" class="summary-grid"></section>
 
+    <nav class="view-tabs" aria-label="Navigasi halaman">
+      <button id="tab-operations" class="active" type="button" data-view="operations">Operasional</button>
+      <button id="tab-gallery" type="button" data-view="gallery">Galeri & Report</button>
+    </nav>
+
+    <section id="operations-page">
     <section class="workspace">
       <aside class="panel list-panel">
         <div class="panel-head">
@@ -139,7 +145,7 @@
           <select id="lost-status">
             <option value="found">Ditemukan</option>
             <option value="claimed">Sudah Diklaim</option>
-            <option value="closed">Selesai</option>
+            <option value="lost">Hilang</option>
           </select>
         </div>
         <div class="field">
@@ -161,7 +167,7 @@
           <select id="gallery-category">
             <option value="general">Umum</option>
             <option value="living_cost">Living Cost</option>
-            <option value="accommodation_card">Kartu Akomodasi</option>
+            <option value="accommodation">Kartu Akomodasi</option>
             <option value="bracelet">Gelang</option>
             <option value="luggage">Koper</option>
             <option value="room_delivery">Distribusi Kamar</option>
@@ -187,6 +193,93 @@
       </div>
       <div id="activity-list" class="activity-list"></div>
     </section>
+    </section>
+
+    <section id="gallery-page" class="hidden">
+      <section class="panel gallery-page-panel">
+        <div class="panel-head">
+          <div>
+            <h2>Galeri Foto & Report Layanan</h2>
+            <span id="gallery-sync-status"></span>
+          </div>
+          <button id="refresh-gallery" class="ghost-btn" type="button">Muat Ulang</button>
+        </div>
+
+        <div class="report-filters">
+          <div class="field">
+            <label for="gallery-search">Pencarian</label>
+            <input id="gallery-search" type="search" placeholder="Nama, porsi, kamar, petugas, catatan">
+          </div>
+          <div class="field">
+            <label for="gallery-source-filter">Sumber Foto</label>
+            <select id="gallery-source-filter">
+              <option value="">Semua Foto</option>
+              <option value="handover_records">Serah Terima</option>
+              <option value="room_deliveries">Distribusi Kamar</option>
+              <option value="lost_found">Lost and Found</option>
+              <option value="gallery_photos">Galeri</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="gallery-service-filter">Layanan</label>
+            <select id="gallery-service-filter">
+              <option value="">Semua Layanan</option>
+              <option value="living_cost">Living Cost</option>
+              <option value="accommodation_card">Kartu Akomodasi</option>
+              <option value="bracelet">Gelang</option>
+              <option value="luggage">Koper</option>
+              <option value="room_delivery">Distribusi Kamar</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="gallery-kloter-filter">Kloter</label>
+            <select id="gallery-kloter-filter">
+              <option value="">Semua</option>
+              <option value="28">Kloter 28</option>
+              <option value="30">Kloter 30</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="report-status-filter">Status Report</label>
+            <select id="report-status-filter">
+              <option value="">Semua</option>
+              <option value="served">Sudah Dilayani</option>
+              <option value="unserved">Belum Dilayani</option>
+            </select>
+          </div>
+        </div>
+
+        <div id="report-summary" class="summary-grid compact-summary"></div>
+
+        <div class="gallery-report-grid">
+          <section>
+            <div class="section-head">
+              <h3>Foto Terdokumentasi</h3>
+              <span id="photo-count"></span>
+            </div>
+            <div id="photo-gallery" class="photo-gallery"></div>
+            <div class="pagination">
+              <button id="photo-prev" class="ghost-btn" type="button">Sebelumnya</button>
+              <span id="photo-page-info"></span>
+              <button id="photo-next" class="ghost-btn" type="button">Berikutnya</button>
+            </div>
+          </section>
+
+          <section>
+            <div class="section-head">
+              <h3>Report Layanan</h3>
+              <span id="report-count"></span>
+            </div>
+            <div id="service-report" class="service-report"></div>
+            <div class="pagination">
+              <button id="report-prev" class="ghost-btn" type="button">Sebelumnya</button>
+              <span id="report-page-info"></span>
+              <button id="report-next" class="ghost-btn" type="button">Berikutnya</button>
+            </div>
+          </section>
+        </div>
+      </section>
+    </section>
   </main>
 
   <div id="toast" class="toast hidden"></div>
@@ -197,7 +290,10 @@
         <strong id="camera-title">Ambil Foto</strong>
         <button id="camera-close" type="button" aria-label="Tutup kamera">×</button>
       </div>
-      <video id="camera-video" autoplay playsinline muted></video>
+      <div class="camera-preview-wrap">
+        <video id="camera-video" autoplay playsinline muted></video>
+        <div id="camera-watermark-preview" class="camera-watermark-preview" aria-hidden="true"></div>
+      </div>
       <canvas id="camera-canvas" class="hidden"></canvas>
       <div class="camera-actions">
         <button id="camera-cancel" class="ghost-btn" type="button">Batal</button>

@@ -6,6 +6,17 @@ const HANDOVER_LABELS = {
   bracelet: "Gelang",
   luggage: "Koper"
 };
+const GALLERY_CATEGORY_LABELS = {
+  general: "Umum",
+  living_cost: "Living Cost",
+  accommodation: "Kartu Akomodasi",
+  accommodation_card: "Kartu Akomodasi",
+  bracelet: "Gelang",
+  luggage: "Koper",
+  room_delivery: "Distribusi Kamar"
+};
+const PHOTO_PAGE_SIZE = 12;
+const REPORT_PAGE_SIZE = 14;
 
 let db = null;
 let firebaseApi = null;
@@ -19,6 +30,17 @@ let cameraStream = null;
 let activeCaptureTarget = "";
 let availableCameras = [];
 let currentCameraDeviceId = "";
+let currentView = "operations";
+let allRecords = {
+  handover: [],
+  rooms: [],
+  lost: [],
+  gallery: []
+};
+let photoCurrentPage = 1;
+let reportCurrentPage = 1;
+let filteredPhotoRows = [];
+let filteredReportRows = [];
 const capturedPhotos = {
   handover: null,
   room: null,
@@ -27,6 +49,10 @@ const capturedPhotos = {
 };
 
 const refs = {
+  operationsPage: document.getElementById("operations-page"),
+  galleryPage: document.getElementById("gallery-page"),
+  tabOperations: document.getElementById("tab-operations"),
+  tabGallery: document.getElementById("tab-gallery"),
   officerName: document.getElementById("officer-name"),
   kloterFilter: document.getElementById("kloter-filter"),
   searchInput: document.getElementById("search-input"),
@@ -59,10 +85,29 @@ const refs = {
   galleryNote: document.getElementById("gallery-note"),
   activityList: document.getElementById("activity-list"),
   clearLocal: document.getElementById("clear-local"),
+  gallerySyncStatus: document.getElementById("gallery-sync-status"),
+  refreshGallery: document.getElementById("refresh-gallery"),
+  gallerySearch: document.getElementById("gallery-search"),
+  gallerySourceFilter: document.getElementById("gallery-source-filter"),
+  galleryServiceFilter: document.getElementById("gallery-service-filter"),
+  galleryKloterFilter: document.getElementById("gallery-kloter-filter"),
+  reportStatusFilter: document.getElementById("report-status-filter"),
+  reportSummary: document.getElementById("report-summary"),
+  photoCount: document.getElementById("photo-count"),
+  photoGallery: document.getElementById("photo-gallery"),
+  photoPrev: document.getElementById("photo-prev"),
+  photoNext: document.getElementById("photo-next"),
+  photoPageInfo: document.getElementById("photo-page-info"),
+  reportCount: document.getElementById("report-count"),
+  serviceReport: document.getElementById("service-report"),
+  reportPrev: document.getElementById("report-prev"),
+  reportNext: document.getElementById("report-next"),
+  reportPageInfo: document.getElementById("report-page-info"),
   toast: document.getElementById("toast"),
   cameraModal: document.getElementById("camera-modal"),
   cameraTitle: document.getElementById("camera-title"),
   cameraVideo: document.getElementById("camera-video"),
+  cameraWatermarkPreview: document.getElementById("camera-watermark-preview"),
   cameraCanvas: document.getElementById("camera-canvas"),
   cameraClose: document.getElementById("camera-close"),
   cameraCancel: document.getElementById("camera-cancel"),
@@ -87,6 +132,8 @@ async function init() {
     renderSummary();
     renderRooms();
     renderPilgrims();
+    await loadOperationalRecords();
+    renderGalleryPage();
     await loadRecentActivities();
   } catch (err) {
     console.error(err);
@@ -125,11 +172,18 @@ async function initFirebase() {
 }
 
 function bindEvents() {
+  refs.tabOperations.addEventListener("click", () => setView("operations"));
+  refs.tabGallery.addEventListener("click", () => setView("gallery"));
   refs.kloterFilter.addEventListener("change", () => {
     renderPilgrims();
     renderRooms();
+    renderGalleryPage();
   });
   refs.searchInput.addEventListener("input", renderPilgrims);
+  refs.handoverType.addEventListener("change", () => clearCapturedPhoto("handover"));
+  refs.roomSelect.addEventListener("change", () => clearCapturedPhoto("room"));
+  refs.lostStatus.addEventListener("change", () => clearCapturedPhoto("lost"));
+  refs.galleryCategory.addEventListener("change", () => clearCapturedPhoto("gallery"));
   refs.handoverForm.addEventListener("submit", handleHandoverSubmit);
   refs.roomForm.addEventListener("submit", handleRoomSubmit);
   refs.lostForm.addEventListener("submit", handleLostSubmit);
@@ -144,12 +198,61 @@ function bindEvents() {
   refs.cameraModal.addEventListener("click", (event) => {
     if (event.target === refs.cameraModal) closeCamera();
   });
+  refs.refreshGallery.addEventListener("click", async () => {
+    await loadOperationalRecords(true);
+    renderGalleryPage();
+  });
+  [
+    refs.gallerySearch,
+    refs.gallerySourceFilter,
+    refs.galleryServiceFilter,
+    refs.galleryKloterFilter,
+    refs.reportStatusFilter
+  ].forEach((input) => {
+    input.addEventListener("input", () => {
+      photoCurrentPage = 1;
+      reportCurrentPage = 1;
+      renderGalleryPage();
+    });
+    input.addEventListener("change", () => {
+      photoCurrentPage = 1;
+      reportCurrentPage = 1;
+      renderGalleryPage();
+    });
+  });
+  refs.photoPrev.addEventListener("click", () => {
+    photoCurrentPage = Math.max(1, photoCurrentPage - 1);
+    renderPhotoGallery();
+  });
+  refs.photoNext.addEventListener("click", () => {
+    photoCurrentPage += 1;
+    renderPhotoGallery();
+  });
+  refs.reportPrev.addEventListener("click", () => {
+    reportCurrentPage = Math.max(1, reportCurrentPage - 1);
+    renderServiceReport();
+  });
+  refs.reportNext.addEventListener("click", () => {
+    reportCurrentPage += 1;
+    renderServiceReport();
+  });
   refs.clearLocal.addEventListener("click", () => {
     localStorage.removeItem(LOCAL_ACTIVITY_KEY);
     recentActivities = [];
     renderActivities();
     showToast("Cache aktivitas lokal dibersihkan.");
   });
+}
+
+function setView(view) {
+  currentView = view;
+  refs.operationsPage.classList.toggle("hidden", view !== "operations");
+  refs.galleryPage.classList.toggle("hidden", view !== "gallery");
+  refs.tabOperations.classList.toggle("active", view === "operations");
+  refs.tabGallery.classList.toggle("active", view === "gallery");
+  if (view === "gallery") {
+    renderGalleryPage();
+  }
 }
 
 function renderSummary() {
@@ -266,14 +369,14 @@ async function handleHandoverSubmit(event) {
     pilgrimName: selectedPilgrim.name,
     kloter: selectedPilgrim.kloter,
     type: refs.handoverType.value,
-    status: "received",
+    room: formatRoom(selectedPilgrim),
     note: refs.handoverNote.value.trim(),
     officerName: getOfficerName(),
-    accommodation: selectedPilgrim.accommodation,
     source: "web"
   };
 
-  await submitWithPhoto(refs.handoverForm, capturedPhotos.handover, payload, CONFIG.COLLECTIONS?.HANDOVER || "handover_records", HANDOVER_LABELS[payload.type]);
+  const saved = await submitWithPhoto(refs.handoverForm, capturedPhotos.handover, payload, CONFIG.COLLECTIONS?.HANDOVER || "handover_records", HANDOVER_LABELS[payload.type]);
+  if (!saved) return;
   refs.handoverForm.reset();
   clearCapturedPhoto("handover");
 }
@@ -289,14 +392,14 @@ async function handleRoomSubmit(event) {
     hotel: room.hotel,
     floor: room.floor,
     room: room.room,
-    pilgrims: room.pilgrims,
-    status: "documented",
+    pilgrimCount: room.pilgrims.length,
     note: refs.roomNote.value.trim(),
     officerName: getOfficerName(),
     source: "web"
   };
 
-  await submitWithPhoto(refs.roomForm, capturedPhotos.room, payload, CONFIG.COLLECTIONS?.ROOM_DELIVERIES || "room_deliveries", "Distribusi Kamar");
+  const saved = await submitWithPhoto(refs.roomForm, capturedPhotos.room, payload, CONFIG.COLLECTIONS?.ROOM_DELIVERIES || "room_deliveries", "Distribusi Kamar");
+  if (!saved) return;
   refs.roomForm.reset();
   clearCapturedPhoto("room");
   renderRooms();
@@ -312,7 +415,8 @@ async function handleLostSubmit(event) {
     source: "web"
   };
 
-  await submitWithPhoto(refs.lostForm, capturedPhotos.lost, payload, CONFIG.COLLECTIONS?.LOST_FOUND || "lost_found", "Lost and Found");
+  const saved = await submitWithPhoto(refs.lostForm, capturedPhotos.lost, payload, CONFIG.COLLECTIONS?.LOST_FOUND || "lost_found", "Lost and Found");
+  if (!saved) return;
   refs.lostForm.reset();
   clearCapturedPhoto("lost");
 }
@@ -326,13 +430,17 @@ async function handleGallerySubmit(event) {
     source: "web"
   };
 
-  await submitWithPhoto(refs.galleryForm, capturedPhotos.gallery, payload, CONFIG.COLLECTIONS?.GALLERY || "gallery_photos", "Galeri");
+  const saved = await submitWithPhoto(refs.galleryForm, capturedPhotos.gallery, payload, CONFIG.COLLECTIONS?.GALLERY || "gallery_photos", "Galeri");
+  if (!saved) return;
   refs.galleryForm.reset();
   clearCapturedPhoto("gallery");
 }
 
 async function submitWithPhoto(form, photo, payload, collectionName, label) {
-  if (!photo?.blob) return showToast("Foto wajib diambil dari kamera.", "error");
+  if (!photo?.blob) {
+    showToast("Foto wajib diambil dari kamera.", "error");
+    return false;
+  }
   const button = form.querySelector("button[type='submit']");
   setBusy(button, true);
 
@@ -352,6 +460,7 @@ async function submitWithPhoto(form, photo, payload, collectionName, label) {
     };
 
     await saveRecord(collectionName, record, localRecord);
+    addRecordToMemory(collectionName, localRecord);
     addLocalActivity({
       label,
       title: payload.pilgrimName || payload.title || payload.roomId || payload.category,
@@ -359,9 +468,12 @@ async function submitWithPhoto(form, photo, payload, collectionName, label) {
       collectionName
     });
     showToast(uploadedPhoto ? `${label} tersimpan.` : `${label} tersimpan lokal. Cloudinary belum aktif.`);
+    renderGalleryPage();
+    return true;
   } catch (err) {
     console.error(err);
     showToast(err.message || "Gagal menyimpan data.", "error");
+    return false;
   } finally {
     setBusy(button, false);
   }
@@ -391,6 +503,7 @@ async function uploadPhoto(file, payload, collectionName) {
 async function openCamera(target) {
   activeCaptureTarget = target;
   refs.cameraTitle.textContent = getCaptureTitle(target);
+  renderCameraWatermarkPreview(buildWatermarkPayload(target));
   refs.cameraModal.classList.remove("hidden");
   refs.cameraModal.setAttribute("aria-hidden", "false");
   refs.cameraSwitch.classList.add("hidden");
@@ -437,6 +550,9 @@ async function startCameraWithConstraints(constraints) {
   refs.cameraVideo.srcObject = cameraStream;
   await waitForVideoReady();
   currentCameraDeviceId = cameraStream.getVideoTracks()[0]?.getSettings().deviceId || "";
+  if (activeCaptureTarget) {
+    renderCameraWatermarkPreview(buildWatermarkPayload(activeCaptureTarget));
+  }
 }
 
 async function startCameraDevice(deviceId) {
@@ -493,6 +609,7 @@ function closeCamera() {
   stopCameraStream();
   refs.cameraVideo.removeAttribute("srcObject");
   refs.cameraVideo.srcObject = null;
+  refs.cameraWatermarkPreview.innerHTML = "";
   refs.cameraSwitch.classList.add("hidden");
   refs.cameraModal.classList.add("hidden");
   refs.cameraModal.setAttribute("aria-hidden", "true");
@@ -577,12 +694,7 @@ function drawWatermark(ctx, canvas, payload) {
   const lineGap = Math.round(textSize * 1.35);
   const maxTextWidth = w - pad * 2;
   const title = payload.title || "Operasional Jemaah Gorontalo 2026";
-  const detailRows = [
-    payload.subject,
-    payload.location,
-    `Petugas: ${payload.officerName}`,
-    `Waktu: ${payload.timestampDisplay}`
-  ].filter(Boolean);
+  const detailRows = buildWatermarkLines(payload);
   const lines = detailRows.flatMap((line) => wrapCanvasText(ctx, line, maxTextWidth, `500 ${textSize}px Poppins, Arial, sans-serif`)).slice(0, 6);
   const boxHeight = pad * 2 + titleSize + lineGap * Math.max(1, lines.length);
   const y = h - boxHeight;
@@ -605,6 +717,25 @@ function drawWatermark(ctx, canvas, payload) {
 
   ctx.fillStyle = "#c69837";
   ctx.fillRect(pad, y + pad - 8, Math.min(210, w * 0.18), 5);
+}
+
+function buildWatermarkLines(payload) {
+  return [
+    payload.subject,
+    payload.location,
+    `Petugas: ${payload.officerName}`,
+    `Waktu: ${payload.timestampDisplay}`
+  ].filter(Boolean);
+}
+
+function renderCameraWatermarkPreview(payload) {
+  const title = payload.title || "Operasional Jemaah Gorontalo 2026";
+  const lines = buildWatermarkLines(payload).slice(0, 6);
+  refs.cameraWatermarkPreview.innerHTML = `
+    <div class="watermark-accent"></div>
+    <strong>${escapeHtml(title)}</strong>
+    ${lines.map((line) => `<span>${escapeHtml(line)}</span>`).join("")}
+  `;
 }
 
 function wrapCanvasText(ctx, text, maxWidth, font) {
@@ -729,6 +860,318 @@ async function saveRecord(collectionName, record, localRecord = record) {
   });
 }
 
+async function loadOperationalRecords(showFeedback = false) {
+  if (showFeedback) refs.gallerySyncStatus.textContent = "Memuat data...";
+
+  const collections = {
+    handover: CONFIG.COLLECTIONS?.HANDOVER || "handover_records",
+    rooms: CONFIG.COLLECTIONS?.ROOM_DELIVERIES || "room_deliveries",
+    lost: CONFIG.COLLECTIONS?.LOST_FOUND || "lost_found",
+    gallery: CONFIG.COLLECTIONS?.GALLERY || "gallery_photos"
+  };
+
+  const nextRecords = {
+    handover: getPendingRecords(collections.handover),
+    rooms: getPendingRecords(collections.rooms),
+    lost: getPendingRecords(collections.lost),
+    gallery: getPendingRecords(collections.gallery)
+  };
+
+  if (db) {
+    await Promise.all(Object.entries(collections).map(async ([key, collectionName]) => {
+      try {
+        const snap = await firebaseApi.getDocs(firebaseApi.collection(db, collectionName));
+        const rows = snap.docs.map((doc) => ({
+          id: doc.id,
+          collectionName,
+          ...doc.data()
+        }));
+        nextRecords[key] = [...rows, ...nextRecords[key]];
+      } catch (err) {
+        console.warn(`Gagal memuat ${collectionName}.`, err);
+      }
+    }));
+  }
+
+  allRecords = nextRecords;
+  refs.gallerySyncStatus.textContent = db ? "Data Firebase dan cache lokal" : "Mode lokal dari cache perangkat";
+}
+
+function addRecordToMemory(collectionName, record) {
+  const key = getRecordBucket(collectionName);
+  if (!key) return;
+  allRecords[key] = [{
+    id: `local-${Date.now()}`,
+    collectionName,
+    ...record
+  }, ...allRecords[key]];
+}
+
+function getRecordBucket(collectionName) {
+  const collections = {
+    handover: CONFIG.COLLECTIONS?.HANDOVER || "handover_records",
+    rooms: CONFIG.COLLECTIONS?.ROOM_DELIVERIES || "room_deliveries",
+    lost: CONFIG.COLLECTIONS?.LOST_FOUND || "lost_found",
+    gallery: CONFIG.COLLECTIONS?.GALLERY || "gallery_photos"
+  };
+  return Object.entries(collections).find(([, value]) => value === collectionName)?.[0] || "";
+}
+
+function renderGalleryPage() {
+  if (!refs.galleryPage) return;
+  filteredPhotoRows = getFilteredPhotoRows();
+  filteredReportRows = getFilteredReportRows();
+  renderReportSummary();
+  renderPhotoGallery();
+  renderServiceReport();
+}
+
+function getFilteredPhotoRows() {
+  const source = refs.gallerySourceFilter.value;
+  const service = refs.galleryServiceFilter.value;
+  const kloter = refs.galleryKloterFilter.value;
+  const term = refs.gallerySearch.value.trim().toLowerCase();
+
+  return buildPhotoRows().filter((row) => {
+    if (source && row.collectionName !== source) return false;
+    if (service && !matchesService(row.service, service)) return false;
+    if (kloter && row.kloter !== kloter) return false;
+    if (!term) return true;
+    return row.searchText.includes(term);
+  }).sort((a, b) => getRecordTime(b) - getRecordTime(a));
+}
+
+function buildPhotoRows() {
+  const handover = allRecords.handover.map((row) => makePhotoRow(row, {
+    collectionName: CONFIG.COLLECTIONS?.HANDOVER || "handover_records",
+    sourceLabel: "Serah Terima",
+    service: row.type,
+    serviceLabel: HANDOVER_LABELS[row.type] || row.type,
+    title: row.pilgrimName || row.noPorsi || "Jemaah",
+    subtitle: [row.noPorsi, row.room].filter(Boolean).join(" · ")
+  }));
+  const roomRows = allRecords.rooms.map((row) => makePhotoRow(row, {
+    collectionName: CONFIG.COLLECTIONS?.ROOM_DELIVERIES || "room_deliveries",
+    sourceLabel: "Distribusi Kamar",
+    service: "room_delivery",
+    serviceLabel: "Distribusi Kamar",
+    title: `Kamar ${row.room || "-"}`,
+    subtitle: [`Kloter ${row.kloter || "-"}`, row.hotel, `Lt ${row.floor || "-"}`].filter(Boolean).join(" · ")
+  }));
+  const lost = allRecords.lost.map((row) => makePhotoRow(row, {
+    collectionName: CONFIG.COLLECTIONS?.LOST_FOUND || "lost_found",
+    sourceLabel: "Lost and Found",
+    service: "lost_found",
+    serviceLabel: getLostStatusLabel(row.status),
+    title: row.title || "Barang",
+    subtitle: row.note || ""
+  }));
+  const gallery = allRecords.gallery.map((row) => makePhotoRow(row, {
+    collectionName: CONFIG.COLLECTIONS?.GALLERY || "gallery_photos",
+    sourceLabel: "Galeri",
+    service: row.category,
+    serviceLabel: GALLERY_CATEGORY_LABELS[row.category] || row.category || "Galeri",
+    title: GALLERY_CATEGORY_LABELS[row.category] || row.category || "Galeri",
+    subtitle: row.note || ""
+  }));
+
+  return [...handover, ...roomRows, ...lost, ...gallery].filter((row) => row.photoUrl);
+}
+
+function makePhotoRow(row, meta) {
+  const photoUrl = row.photoUrl || row.localPhotoDataUrl || "";
+  const searchText = [
+    meta.sourceLabel,
+    meta.serviceLabel,
+    meta.title,
+    meta.subtitle,
+    row.kloter,
+    row.noPorsi,
+    row.pilgrimName,
+    row.room,
+    row.hotel,
+    row.officerName,
+    row.note,
+    row.createdAt
+  ].join(" ").toLowerCase();
+
+  return {
+    ...row,
+    ...meta,
+    photoUrl,
+    searchText
+  };
+}
+
+function renderPhotoGallery() {
+  const totalPages = Math.max(1, Math.ceil(filteredPhotoRows.length / PHOTO_PAGE_SIZE));
+  photoCurrentPage = Math.min(totalPages, Math.max(1, photoCurrentPage));
+  const start = (photoCurrentPage - 1) * PHOTO_PAGE_SIZE;
+  const pageRows = filteredPhotoRows.slice(start, start + PHOTO_PAGE_SIZE);
+
+  refs.photoCount.textContent = `${filteredPhotoRows.length} foto`;
+  refs.photoGallery.innerHTML = pageRows.length ? pageRows.map((row) => `
+    <article class="photo-card">
+      <a href="${escapeAttr(row.photoUrl)}" target="_blank" rel="noreferrer">
+        <img src="${escapeAttr(row.photoUrl)}" alt="${escapeAttr(row.title)}" loading="lazy">
+      </a>
+      <div>
+        <strong>${escapeHtml(row.title)}</strong>
+        <span>${escapeHtml(row.sourceLabel)} · ${escapeHtml(row.serviceLabel || "-")}</span>
+        <span>${escapeHtml(row.subtitle || row.officerName || "-")}</span>
+        <span>${escapeHtml(formatRecordDate(row))}</span>
+      </div>
+    </article>
+  `).join("") : '<div class="empty-state">Belum ada foto sesuai filter.</div>';
+
+  refs.photoPageInfo.textContent = `Halaman ${photoCurrentPage} dari ${totalPages}`;
+  refs.photoPrev.disabled = photoCurrentPage <= 1;
+  refs.photoNext.disabled = photoCurrentPage >= totalPages;
+}
+
+function getFilteredReportRows() {
+  const service = refs.galleryServiceFilter.value;
+  const kloter = refs.galleryKloterFilter.value;
+  const status = refs.reportStatusFilter.value;
+  const term = refs.gallerySearch.value.trim().toLowerCase();
+  const rows = service === "room_delivery" ? buildRoomReportRows() : buildPilgrimReportRows(service);
+
+  return rows.filter((row) => {
+    if (kloter && row.kloter !== kloter) return false;
+    if (status && row.status !== status) return false;
+    if (!term) return true;
+    return row.searchText.includes(term);
+  });
+}
+
+function buildPilgrimReportRows(service) {
+  const handoverByPilgrim = new Map();
+  allRecords.handover.forEach((row) => {
+    if (!row.pilgrimId || !row.type) return;
+    if (!handoverByPilgrim.has(row.pilgrimId)) handoverByPilgrim.set(row.pilgrimId, new Set());
+    handoverByPilgrim.get(row.pilgrimId).add(row.type);
+  });
+
+  return pilgrims.map((pilgrim) => {
+    const services = handoverByPilgrim.get(pilgrim.id) || new Set();
+    const served = service ? services.has(service) : services.size > 0;
+    const progress = service
+      ? (HANDOVER_LABELS[service] || service)
+      : `${services.size}/4 layanan`;
+    const roomText = formatRoom(pilgrim);
+    return {
+      id: pilgrim.id,
+      type: "pilgrim",
+      kloter: pilgrim.kloter,
+      title: pilgrim.name,
+      subtitle: `Porsi ${pilgrim.noPorsi} · ${roomText}`,
+      status: served ? "served" : "unserved",
+      statusLabel: served ? "Sudah Dilayani" : "Belum Dilayani",
+      progress,
+      searchText: [
+        pilgrim.name,
+        pilgrim.noPorsi,
+        pilgrim.kloter,
+        pilgrim.kabKota,
+        pilgrim.rombongan,
+        pilgrim.regu,
+        roomText,
+        progress
+      ].join(" ").toLowerCase()
+    };
+  });
+}
+
+function buildRoomReportRows() {
+  const documentedRooms = new Set(allRecords.rooms.map((row) => row.roomId).filter(Boolean));
+  return rooms.map((room) => {
+    const served = documentedRooms.has(room.id);
+    return {
+      id: room.id,
+      type: "room",
+      kloter: room.kloter,
+      title: `Kamar ${room.room}`,
+      subtitle: `Kloter ${room.kloter} · ${room.hotel} · Lt ${room.floor}`,
+      status: served ? "served" : "unserved",
+      statusLabel: served ? "Sudah Didokumentasikan" : "Belum Didokumentasikan",
+      progress: `${room.pilgrims.length} jemaah`,
+      searchText: [
+        room.id,
+        room.kloter,
+        room.hotel,
+        room.floor,
+        room.room,
+        room.pilgrims.map((p) => `${p.name} ${p.noPorsi}`).join(" ")
+      ].join(" ").toLowerCase()
+    };
+  });
+}
+
+function renderServiceReport() {
+  const totalPages = Math.max(1, Math.ceil(filteredReportRows.length / REPORT_PAGE_SIZE));
+  reportCurrentPage = Math.min(totalPages, Math.max(1, reportCurrentPage));
+  const start = (reportCurrentPage - 1) * REPORT_PAGE_SIZE;
+  const pageRows = filteredReportRows.slice(start, start + REPORT_PAGE_SIZE);
+
+  refs.reportCount.textContent = `${filteredReportRows.length} baris`;
+  refs.serviceReport.innerHTML = pageRows.length ? pageRows.map((row) => `
+    <article class="report-row ${row.status}">
+      <div>
+        <strong>${escapeHtml(row.title)}</strong>
+        <span>${escapeHtml(row.subtitle)}</span>
+      </div>
+      <div class="report-row-meta">
+        <span>${escapeHtml(row.progress)}</span>
+        <b>${escapeHtml(row.statusLabel)}</b>
+      </div>
+    </article>
+  `).join("") : '<div class="empty-state">Tidak ada report sesuai filter.</div>';
+
+  refs.reportPageInfo.textContent = `Halaman ${reportCurrentPage} dari ${totalPages}`;
+  refs.reportPrev.disabled = reportCurrentPage <= 1;
+  refs.reportNext.disabled = reportCurrentPage >= totalPages;
+}
+
+function renderReportSummary() {
+  const served = filteredReportRows.filter((row) => row.status === "served").length;
+  const unserved = filteredReportRows.filter((row) => row.status === "unserved").length;
+  const roomDocumented = new Set(allRecords.rooms.map((row) => row.roomId).filter(Boolean)).size;
+  const photoCount = filteredPhotoRows.length;
+
+  refs.reportSummary.innerHTML = [
+    ["Foto Sesuai Filter", photoCount],
+    ["Sudah Dilayani", served],
+    ["Belum Dilayani", unserved],
+    ["Kamar Terdokumentasi", roomDocumented]
+  ].map(([label, value]) => `
+    <div class="summary-card">
+      <span>${label}</span>
+      <strong>${value}</strong>
+    </div>
+  `).join("");
+}
+
+function matchesService(value, service) {
+  if (!service) return true;
+  if (service === "accommodation_card") return value === "accommodation_card" || value === "accommodation";
+  return value === service;
+}
+
+function getRecordTime(row) {
+  const value = row.createdAtServer?.toDate?.() || row.createdAt || row.timestamp || 0;
+  return new Date(value).getTime() || 0;
+}
+
+function formatRecordDate(row) {
+  const date = new Date(getRecordTime(row));
+  if (Number.isNaN(date.getTime())) return row.createdAt || "";
+  return date.toLocaleString("id-ID", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "Asia/Makassar"
+  });
+}
+
 async function loadRecentActivities() {
   recentActivities = getLocalActivities();
   if (db) {
@@ -779,6 +1222,15 @@ function cachePendingRecord(collectionName, record) {
   localStorage.setItem(key, JSON.stringify(rows.slice(0, 200)));
 }
 
+function getPendingRecords(collectionName) {
+  const key = `pending_${collectionName}`;
+  return JSON.parse(localStorage.getItem(key) || "[]").map((row, index) => ({
+    id: `pending-${collectionName}-${index}`,
+    collectionName,
+    ...row
+  }));
+}
+
 function getOfficerName() {
   return refs.officerName.value.trim() || "Petugas";
 }
@@ -802,6 +1254,15 @@ function isCloudinaryConfigured() {
 function formatRoom(pilgrim) {
   const a = pilgrim.accommodation || {};
   return `${a.hotel || "-"} Lt ${a.floor || "-"} / ${a.room || "-"}`;
+}
+
+function getLostStatusLabel(status) {
+  const labels = {
+    found: "Ditemukan",
+    claimed: "Sudah Diklaim",
+    lost: "Hilang"
+  };
+  return labels[status] || status || "Lost and Found";
 }
 
 function getPilgrimPhotoPath(pilgrim) {

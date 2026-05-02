@@ -182,6 +182,10 @@ textarea {
   border-radius: 8px;
   padding: 10px;
   cursor: pointer;
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
 }
 
 .pilgrim-item.active {
@@ -193,6 +197,19 @@ textarea {
 .activity-item strong {
   display: block;
   color: var(--ink);
+}
+
+.pilgrim-item img,
+#detail-name img {
+  width: 52px;
+  height: 52px;
+  border-radius: 8px;
+  object-fit: cover;
+  background: #eef3f0;
+}
+
+.pilgrim-item-text {
+  min-width: 0;
 }
 
 .pilgrim-item span,
@@ -213,6 +230,9 @@ textarea {
 .detail-head h2 {
   margin: 0;
   font-size: 1.35rem;
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .eyebrow {

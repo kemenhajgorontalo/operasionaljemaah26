@@ -1,15 +1,3 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
-import {
-  getFirestore,
-  collection,
-  addDoc,
-  getDocs,
-  query,
-  orderBy,
-  limit,
-  serverTimestamp
-} from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
-
 const CONFIG = window.APP_CONFIG || {};
 const LOCAL_ACTIVITY_KEY = "asramahaji_activity_cache";
 const HANDOVER_LABELS = {
@@ -20,6 +8,7 @@ const HANDOVER_LABELS = {
 };
 
 let db = null;
+let firebaseApi = null;
 let cloudReady = false;
 let pilgrims = [];
 let rooms = [];
@@ -72,7 +61,7 @@ async function init() {
   });
 
   await loadSeedData();
-  initFirebase();
+  await initFirebase();
   cloudReady = isCloudinaryConfigured();
   bindEvents();
   renderSummary();
@@ -97,10 +86,22 @@ async function loadSeedData() {
   rooms = await roomsRes.json();
 }
 
-function initFirebase() {
+async function initFirebase() {
   if (!isFirebaseConfigured()) return;
-  const app = initializeApp(CONFIG.FIREBASE_CONFIG);
-  db = getFirestore(app);
+
+  try {
+    const [{ initializeApp }, firestore] = await Promise.all([
+      import("https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js"),
+      import("https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js")
+    ]);
+    firebaseApi = firestore;
+    const app = initializeApp(CONFIG.FIREBASE_CONFIG);
+    db = firestore.getFirestore(app);
+  } catch (err) {
+    console.warn("Firebase tidak dapat dimuat. Aplikasi berjalan dalam mode lokal.", err);
+    db = null;
+    firebaseApi = null;
+  }
 }
 
 function bindEvents() {
@@ -146,8 +147,11 @@ function renderPilgrims() {
 
   refs.pilgrimList.innerHTML = filtered.map((p) => `
     <button class="pilgrim-item ${p.id === selectedPilgrimId ? "active" : ""}" type="button" data-id="${escapeAttr(p.id)}">
-      <strong>${escapeHtml(p.name)}</strong>
-      <span>${escapeHtml(p.kloterLabel)} · Porsi ${escapeHtml(p.noPorsi)} · Kamar ${escapeHtml(formatRoom(p))}</span>
+      <img src="${escapeAttr(getPilgrimPhotoPath(p))}" alt="Foto ${escapeAttr(p.name)}" loading="lazy">
+      <span class="pilgrim-item-text">
+        <strong>${escapeHtml(p.name)}</strong>
+        <span>${escapeHtml(p.kloterLabel)} · Porsi ${escapeHtml(p.noPorsi)} · Kamar ${escapeHtml(formatRoom(p))}</span>
+      </span>
     </button>
   `).join("");
 
@@ -196,7 +200,7 @@ function renderDetail() {
   refs.emptyState.classList.add("hidden");
   refs.pilgrimDetail.classList.remove("hidden");
   refs.detailKloter.textContent = `${p.kloterLabel} · ${p.role}`;
-  refs.detailName.textContent = p.name;
+  refs.detailName.innerHTML = `<img src="${escapeAttr(getPilgrimPhotoPath(p))}" alt="Foto ${escapeAttr(p.name)}"> <span>${escapeHtml(p.name)}</span>`;
   refs.detailMeta.textContent = `Porsi ${p.noPorsi} · ${p.kabKota} · Rombongan ${p.rombongan} / Regu ${p.regu}`;
 
   const a = p.accommodation || {};
@@ -350,9 +354,9 @@ async function saveRecord(collectionName, record) {
     return;
   }
 
-  await addDoc(collection(db, collectionName), {
+  await firebaseApi.addDoc(firebaseApi.collection(db, collectionName), {
     ...record,
-    createdAtServer: serverTimestamp()
+    createdAtServer: firebaseApi.serverTimestamp()
   });
 }
 
@@ -360,12 +364,17 @@ async function loadRecentActivities() {
   recentActivities = getLocalActivities();
   if (db) {
     try {
-      const snap = await getDocs(query(collection(db, CONFIG.COLLECTIONS?.HANDOVER || "handover_records"), orderBy("createdAtServer", "desc"), limit(8)));
+      const handoverCollection = CONFIG.COLLECTIONS?.HANDOVER || "handover_records";
+      const snap = await firebaseApi.getDocs(firebaseApi.query(
+        firebaseApi.collection(db, handoverCollection),
+        firebaseApi.orderBy("createdAtServer", "desc"),
+        firebaseApi.limit(8)
+      ));
       const rows = snap.docs.map((doc) => doc.data()).map((row) => ({
         label: HANDOVER_LABELS[row.type] || row.type || "Serah Terima",
         title: row.pilgrimName || row.noPorsi || "Record",
         subtitle: `${row.officerName || "Petugas"} · ${row.createdAt || ""}`,
-        collectionName: CONFIG.COLLECTIONS?.HANDOVER || "handover_records"
+        collectionName: handoverCollection
       }));
       recentActivities = [...rows, ...recentActivities].slice(0, 12);
     } catch (err) {
@@ -424,6 +433,10 @@ function isCloudinaryConfigured() {
 function formatRoom(pilgrim) {
   const a = pilgrim.accommodation || {};
   return `${a.hotel || "-"} Lt ${a.floor || "-"} / ${a.room || "-"}`;
+}
+
+function getPilgrimPhotoPath(pilgrim) {
+  return pilgrim.sourceAssets?.photo || "assets/logo-kementerian-haji-dan-umrah.png";
 }
 
 function showToast(message, type = "success") {

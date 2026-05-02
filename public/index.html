@@ -5,6 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Operasional Jemaah Gorontalo 2026</title>
   <link rel="icon" type="image/png" href="assets/logo-kementerian-haji-dan-umrah.png">
+  <link rel="apple-touch-icon" href="assets/logo-kementerian-haji-dan-umrah.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -17,7 +21,19 @@
   </header>
 
   <main class="app-shell">
+    <section id="loading-state" class="loading-state">
+      <div class="loader-mark"></div>
+      <div>
+        <strong>Memuat data jemaah</strong>
+        <span>Menyiapkan Kloter 28, Kloter 30, dan data kamar.</span>
+      </div>
+    </section>
+
     <section class="toolbar">
+      <div class="toolbar-title">
+        <span>Filter Data</span>
+        <strong>Pilih petugas, kloter, lalu cari jemaah atau kamar.</strong>
+      </div>
       <div class="field">
         <label for="officer-name">Petugas</label>
         <input id="officer-name" type="text" placeholder="Nama petugas input">
@@ -41,10 +57,14 @@
     <section class="workspace">
       <aside class="panel list-panel">
         <div class="panel-head">
-          <h2>Data Jemaah</h2>
-          <span id="result-count"></span>
+        <h2>Data Jemaah</h2>
+        <span id="result-count"></span>
+      </div>
+        <div id="pilgrim-list" class="pilgrim-list">
+          <div class="skeleton-card"></div>
+          <div class="skeleton-card"></div>
+          <div class="skeleton-card"></div>
         </div>
-        <div id="pilgrim-list" class="pilgrim-list"></div>
       </aside>
 
       <section class="panel detail-panel">

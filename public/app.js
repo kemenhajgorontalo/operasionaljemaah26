@@ -28,6 +28,7 @@ const refs = {
   officerName: document.getElementById("officer-name"),
   kloterFilter: document.getElementById("kloter-filter"),
   searchInput: document.getElementById("search-input"),
+  loadingState: document.getElementById("loading-state"),
   summary: document.getElementById("summary"),
   resultCount: document.getElementById("result-count"),
   pilgrimList: document.getElementById("pilgrim-list"),
@@ -69,19 +70,28 @@ const refs = {
 document.addEventListener("DOMContentLoaded", init);
 
 async function init() {
+  setLoading(true, "Memuat data jemaah", "Menyiapkan Kloter 28, Kloter 30, dan data kamar.");
   refs.officerName.value = localStorage.getItem("asramahaji_officer_name") || "";
   refs.officerName.addEventListener("input", () => {
     localStorage.setItem("asramahaji_officer_name", refs.officerName.value.trim());
   });
 
-  await loadSeedData();
-  await initFirebase();
-  cloudReady = isCloudinaryConfigured();
-  bindEvents();
-  renderSummary();
-  renderRooms();
-  renderPilgrims();
-  await loadRecentActivities();
+  try {
+    await loadSeedData();
+    await initFirebase();
+    cloudReady = isCloudinaryConfigured();
+    bindEvents();
+    renderSummary();
+    renderRooms();
+    renderPilgrims();
+    await loadRecentActivities();
+  } catch (err) {
+    console.error(err);
+    refs.pilgrimList.innerHTML = '<div class="empty-state">Data jemaah gagal dimuat. Periksa koneksi lalu muat ulang halaman.</div>';
+    showToast("Data jemaah gagal dimuat.", "error");
+  } finally {
+    setLoading(false);
+  }
 }
 
 async function loadSeedData() {
@@ -159,14 +169,15 @@ function renderSummary() {
 
 function renderPilgrims() {
   const filtered = getFilteredPilgrims().slice(0, 80);
-  refs.resultCount.textContent = `${filtered.length} tampil`;
+  refs.resultCount.textContent = `${filtered.length} tampil dari ${getFilteredPilgrims().length}`;
 
   refs.pilgrimList.innerHTML = filtered.map((p) => `
     <button class="pilgrim-item ${p.id === selectedPilgrimId ? "active" : ""}" type="button" data-id="${escapeAttr(p.id)}">
-      <img src="${escapeAttr(getPilgrimPhotoPath(p))}" alt="Foto ${escapeAttr(p.name)}" loading="lazy">
+      <span class="pilgrim-badge">${escapeHtml(p.kloter)}</span>
       <span class="pilgrim-item-text">
         <strong>${escapeHtml(p.name)}</strong>
-        <span>${escapeHtml(p.kloterLabel)} · Porsi ${escapeHtml(p.noPorsi)} · Kamar ${escapeHtml(formatRoom(p))}</span>
+        <span>Porsi ${escapeHtml(p.noPorsi)} · ${escapeHtml(p.kabKota || "-")}</span>
+        <span>${escapeHtml(formatRoom(p))} · Rombongan ${escapeHtml(p.rombongan)} / Regu ${escapeHtml(p.regu)}</span>
       </span>
     </button>
   `).join("");
@@ -216,7 +227,7 @@ function renderDetail() {
   refs.emptyState.classList.add("hidden");
   refs.pilgrimDetail.classList.remove("hidden");
   refs.detailKloter.textContent = `${p.kloterLabel} · ${p.role}`;
-  refs.detailName.innerHTML = `<img src="${escapeAttr(getPilgrimPhotoPath(p))}" alt="Foto ${escapeAttr(p.name)}"> <span>${escapeHtml(p.name)}</span>`;
+  refs.detailName.textContent = p.name;
   refs.detailMeta.textContent = `Porsi ${p.noPorsi} · ${p.kabKota} · Rombongan ${p.rombongan} / Regu ${p.regu}`;
 
   const a = p.accommodation || {};
@@ -490,10 +501,10 @@ function drawWatermark(ctx, canvas, payload) {
   ctx.fillRect(0, y, w, boxHeight);
 
   ctx.fillStyle = "rgba(255,255,255,0.96)";
-  ctx.font = `700 ${titleSize}px Arial, Helvetica, sans-serif`;
+  ctx.font = `700 ${titleSize}px Poppins, Arial, sans-serif`;
   ctx.fillText(lines[0], pad, y + pad + titleSize);
 
-  ctx.font = `500 ${textSize}px Arial, Helvetica, sans-serif`;
+  ctx.font = `500 ${textSize}px Poppins, Arial, sans-serif`;
   lines.slice(1).forEach((line, index) => {
     ctx.fillText(line, pad, y + pad + titleSize + lineGap * (index + 1));
   });
@@ -662,6 +673,19 @@ function formatRoom(pilgrim) {
 
 function getPilgrimPhotoPath(pilgrim) {
   return pilgrim.sourceAssets?.photo || "assets/logo-kementerian-haji-dan-umrah.png";
+}
+
+function setLoading(isLoading, title = "", subtitle = "") {
+  if (!refs.loadingState) return;
+  if (!isLoading) {
+    refs.loadingState.classList.add("hidden");
+    return;
+  }
+  refs.loadingState.classList.remove("hidden");
+  const strong = refs.loadingState.querySelector("strong");
+  const span = refs.loadingState.querySelector("span");
+  if (strong) strong.textContent = title;
+  if (span) span.textContent = subtitle;
 }
 
 function showToast(message, type = "success") {

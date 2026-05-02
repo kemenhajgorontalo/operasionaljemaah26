@@ -377,8 +377,8 @@ textarea {
   aspect-ratio: 4 / 3;
   border: 1px solid var(--line);
   border-radius: 8px;
-  object-fit: cover;
-  background: var(--light);
+  object-fit: contain;
+  background: #101816;
 }
 
 .empty-state {

@@ -1,16 +1,17 @@
 window.APP_CONFIG = {
   FIREBASE_CONFIG: {
-    apiKey: "YOUR_API_KEY",
-    authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-    projectId: "YOUR_PROJECT_ID",
-    storageBucket: "YOUR_PROJECT_ID.appspot.com",
-    messagingSenderId: "YOUR_SENDER_ID",
-    appId: "YOUR_APP_ID"
+    apiKey: "AIzaSyA4t-Ozc1sVwT3lrZ4fp0XcLpBzOOfYkgc",
+    authDomain: "haji2026.firebaseapp.com",
+    projectId: "haji2026",
+    storageBucket: "haji2026.firebasestorage.app",
+    messagingSenderId: "449125735663",
+    appId: "1:449125735663:web:b849b89e69926c569c8f1a",
+    measurementId: "G-8SW31WLEGM"
   },
   CLOUDINARY: {
-    CLOUD_NAME: "YOUR_CLOUD_NAME",
-    UPLOAD_PRESET: "YOUR_UNSIGNED_UPLOAD_PRESET",
-    FOLDER: "asramahaji-gorontalo-2026"
+    CLOUD_NAME: "dt5ersomg",
+    UPLOAD_PRESET: "operasionaljemaah26_unsigned",
+    FOLDER: "operasionaljemaah26"
   },
   COLLECTIONS: {
     HANDOVER: "handover_records",

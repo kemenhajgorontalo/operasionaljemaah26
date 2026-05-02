@@ -1,0 +1,31 @@
+{
+  "generatedAt": "2026-05-02T09:24:05.980Z",
+  "sourceRepository": "kemenhajgorontalo/datajemaahgorontalo2026",
+  "sourceRoot": "/content/drive/MyDrive/RICHIE/ASRAMAHAJI/datajemaahgorontalo2026",
+  "totalPilgrims": 611,
+  "totalRooms": 213,
+  "kloters": {
+    "28": {
+      "pilgrims": 393,
+      "rooms": 139
+    },
+    "30": {
+      "pilgrims": 218,
+      "rooms": 74
+    }
+  },
+  "assetStatus": {
+    "photo": {
+      "available": 604,
+      "missing": 7
+    },
+    "cardPdf": {
+      "available": 604,
+      "missing": 7
+    },
+    "visaPdf": {
+      "available": 601,
+      "missing": 10
+    }
+  }
+}

@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Operasional Jemaah Gorontalo 2026</title>
+  <link rel="icon" type="image/png" href="assets/logo-kementerian-haji-dan-umrah.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="app-header">
+    <img src="assets/logo-kementerian-haji-dan-umrah.png" alt="Logo Kementerian Haji dan Umrah">
+    <div>
+      <h1>Operasional Jemaah</h1>
+      <p>Kloter 28 dan Kloter 30 Gorontalo 2026</p>
+    </div>
+  </header>
+
+  <main class="app-shell">
+    <section class="toolbar">
+      <div class="field">
+        <label for="officer-name">Petugas</label>
+        <input id="officer-name" type="text" placeholder="Nama petugas input">
+      </div>
+      <div class="field">
+        <label for="kloter-filter">Kloter</label>
+        <select id="kloter-filter">
+          <option value="">Semua</option>
+          <option value="28">Kloter 28</option>
+          <option value="30">Kloter 30</option>
+        </select>
+      </div>
+      <div class="field search-field">
+        <label for="search-input">Cari Jemaah</label>
+        <input id="search-input" type="search" placeholder="Nama, porsi, kamar, daerah">
+      </div>
+    </section>
+
+    <section id="summary" class="summary-grid"></section>
+
+    <section class="workspace">
+      <aside class="panel list-panel">
+        <div class="panel-head">
+          <h2>Data Jemaah</h2>
+          <span id="result-count"></span>
+        </div>
+        <div id="pilgrim-list" class="pilgrim-list"></div>
+      </aside>
+
+      <section class="panel detail-panel">
+        <div id="empty-state" class="empty-state">
+          Pilih jemaah untuk mencatat living cost, kartu akomodasi, gelang, atau koper.
+        </div>
+
+        <div id="pilgrim-detail" class="hidden">
+          <div class="detail-head">
+            <div>
+              <p id="detail-kloter" class="eyebrow"></p>
+              <h2 id="detail-name"></h2>
+              <p id="detail-meta"></p>
+            </div>
+          </div>
+
+          <div id="detail-accommodation" class="info-grid"></div>
+
+          <form id="handover-form" class="action-form">
+            <h3>Serah Terima Per Jemaah</h3>
+            <div class="field">
+              <label for="handover-type">Jenis</label>
+              <select id="handover-type" required>
+                <option value="living_cost">Living Cost</option>
+                <option value="accommodation_card">Kartu Akomodasi</option>
+                <option value="bracelet">Gelang</option>
+                <option value="luggage">Koper</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="handover-photo">Foto Bukti</label>
+              <input id="handover-photo" type="file" accept="image/*" capture="environment" required>
+            </div>
+            <div class="field">
+              <label for="handover-note">Catatan</label>
+              <textarea id="handover-note" rows="2" placeholder="Opsional"></textarea>
+            </div>
+            <button class="primary-btn" type="submit">Simpan Serah Terima</button>
+          </form>
+        </div>
+      </section>
+    </section>
+
+    <section class="panel forms-grid">
+      <form id="room-form" class="action-form">
+        <h3>Distribusi Koper per Kamar</h3>
+        <div class="field">
+          <label for="room-select">Kamar</label>
+          <select id="room-select" required></select>
+        </div>
+        <div class="field">
+          <label for="room-photo">Foto Pintu/Koper</label>
+          <input id="room-photo" type="file" accept="image/*" capture="environment" required>
+        </div>
+        <div class="field">
+          <label for="room-note">Catatan</label>
+          <textarea id="room-note" rows="2" placeholder="Opsional"></textarea>
+        </div>
+        <button class="primary-btn" type="submit">Simpan Distribusi Kamar</button>
+      </form>
+
+      <form id="lost-form" class="action-form">
+        <h3>Lost and Found</h3>
+        <div class="field">
+          <label for="lost-title">Nama Barang</label>
+          <input id="lost-title" type="text" placeholder="Contoh: koper hitam, tas kecil" required>
+        </div>
+        <div class="field">
+          <label for="lost-status">Status</label>
+          <select id="lost-status">
+            <option value="found">Ditemukan</option>
+            <option value="claimed">Sudah Diklaim</option>
+            <option value="closed">Selesai</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="lost-photo">Foto Barang</label>
+          <input id="lost-photo" type="file" accept="image/*" capture="environment" required>
+        </div>
+        <div class="field">
+          <label for="lost-note">Catatan</label>
+          <textarea id="lost-note" rows="2" placeholder="Lokasi ditemukan, ciri barang, pengambil"></textarea>
+        </div>
+        <button class="primary-btn" type="submit">Simpan Lost and Found</button>
+      </form>
+
+      <form id="gallery-form" class="action-form">
+        <h3>Galeri Foto</h3>
+        <div class="field">
+          <label for="gallery-category">Kategori</label>
+          <select id="gallery-category">
+            <option value="general">Umum</option>
+            <option value="living_cost">Living Cost</option>
+            <option value="accommodation_card">Kartu Akomodasi</option>
+            <option value="bracelet">Gelang</option>
+            <option value="luggage">Koper</option>
+            <option value="room_delivery">Distribusi Kamar</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="gallery-photo">Foto</label>
+          <input id="gallery-photo" type="file" accept="image/*" capture="environment" required>
+        </div>
+        <div class="field">
+          <label for="gallery-note">Keterangan</label>
+          <textarea id="gallery-note" rows="2" placeholder="Opsional"></textarea>
+        </div>
+        <button class="primary-btn" type="submit">Simpan Galeri</button>
+      </form>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Aktivitas Terakhir</h2>
+        <button id="clear-local" class="ghost-btn" type="button">Bersihkan Cache Lokal</button>
+      </div>
+      <div id="activity-list" class="activity-list"></div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="config.js"></script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

@@ -259,13 +259,12 @@ function renderSummary() {
   const kloter28 = pilgrims.filter((p) => p.kloter === "28").length;
   const kloter30 = pilgrims.filter((p) => p.kloter === "30").length;
   const roomCount = rooms.length;
-  const cloudLabel = db && cloudReady ? "Firebase + Cloudinary aktif" : "Mode lokal";
 
   refs.summary.innerHTML = [
     ["Total Jemaah", pilgrims.length],
     ["Kloter 28", kloter28],
     ["Kloter 30", kloter30],
-    ["Kamar", `${roomCount} · ${cloudLabel}`]
+    ["Kamar", roomCount]
   ].map(([label, value]) => `
     <div class="summary-card">
       <span>${label}</span>

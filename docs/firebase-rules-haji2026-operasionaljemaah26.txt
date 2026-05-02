@@ -1,0 +1,149 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isText(value, maxLength) {
+      return value is string && value.size() > 0 && value.size() <= maxLength;
+    }
+
+    function isOptionalText(value, maxLength) {
+      return value == null || value is string && value.size() <= maxLength;
+    }
+
+    function hasValidPhoto() {
+      return request.resource.data.photoStatus == "uploaded"
+        && request.resource.data.photoUrl is string
+        && request.resource.data.photoUrl.matches("^https://res.cloudinary.com/.*")
+        && request.resource.data.photoPublicId is string
+        && request.resource.data.photoPublicId.size() > 0
+        && request.resource.data.watermark is map;
+    }
+
+    function hasValidBaseRecord() {
+      return isText(request.resource.data.officerName, 80)
+        && request.resource.data.source == "web"
+        && request.resource.data.createdAt is string
+        && hasValidPhoto();
+    }
+
+    function isReadOnlyRequest() {
+      return request.auth == null || request.auth != null;
+    }
+
+    match /handover_records/{recordId} {
+      allow read: if isReadOnlyRequest();
+      allow create: if hasValidBaseRecord()
+        && request.resource.data.keys().hasOnly([
+          "type",
+          "pilgrimId",
+          "pilgrimName",
+          "noPorsi",
+          "kloter",
+          "room",
+          "note",
+          "officerName",
+          "source",
+          "photoUrl",
+          "photoPublicId",
+          "photoStatus",
+          "watermark",
+          "createdAt",
+          "createdAtServer"
+        ])
+        && request.resource.data.type in [
+          "living_cost",
+          "accommodation_card",
+          "bracelet",
+          "luggage"
+        ]
+        && isText(request.resource.data.pilgrimId, 120)
+        && isText(request.resource.data.pilgrimName, 160)
+        && isText(request.resource.data.noPorsi, 40)
+        && request.resource.data.kloter in ["28", "30"]
+        && isOptionalText(request.resource.data.room, 120)
+        && isOptionalText(request.resource.data.note, 500);
+      allow update, delete: if false;
+    }
+
+    match /room_deliveries/{recordId} {
+      allow read: if isReadOnlyRequest();
+      allow create: if hasValidBaseRecord()
+        && request.resource.data.keys().hasOnly([
+          "roomId",
+          "kloter",
+          "hotel",
+          "floor",
+          "room",
+          "pilgrimCount",
+          "note",
+          "officerName",
+          "source",
+          "photoUrl",
+          "photoPublicId",
+          "photoStatus",
+          "watermark",
+          "createdAt",
+          "createdAtServer"
+        ])
+        && isText(request.resource.data.roomId, 160)
+        && request.resource.data.kloter in ["28", "30"]
+        && isText(request.resource.data.hotel, 120)
+        && isText(request.resource.data.floor, 40)
+        && isText(request.resource.data.room, 80)
+        && request.resource.data.pilgrimCount is int
+        && request.resource.data.pilgrimCount >= 0
+        && request.resource.data.pilgrimCount <= 12
+        && isOptionalText(request.resource.data.note, 500);
+      allow update, delete: if false;
+    }
+
+    match /lost_found/{recordId} {
+      allow read: if isReadOnlyRequest();
+      allow create: if hasValidBaseRecord()
+        && request.resource.data.keys().hasOnly([
+          "title",
+          "status",
+          "note",
+          "officerName",
+          "source",
+          "photoUrl",
+          "photoPublicId",
+          "photoStatus",
+          "watermark",
+          "createdAt",
+          "createdAtServer"
+        ])
+        && isText(request.resource.data.title, 160)
+        && request.resource.data.status in ["found", "claimed", "lost"]
+        && isOptionalText(request.resource.data.note, 700);
+      allow update, delete: if false;
+    }
+
+    match /gallery_photos/{recordId} {
+      allow read: if isReadOnlyRequest();
+      allow create: if hasValidBaseRecord()
+        && request.resource.data.keys().hasOnly([
+          "category",
+          "note",
+          "officerName",
+          "source",
+          "photoUrl",
+          "photoPublicId",
+          "photoStatus",
+          "watermark",
+          "createdAt",
+          "createdAtServer"
+        ])
+        && request.resource.data.category in [
+          "living_cost",
+          "accommodation",
+          "bracelet",
+          "luggage",
+          "room_delivery",
+          "general"
+        ]
+        && isOptionalText(request.resource.data.note, 700);
+      allow update, delete: if false;
+    }
+  }
+}

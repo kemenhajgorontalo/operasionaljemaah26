@@ -17,6 +17,8 @@ let selectedPilgrimId = "";
 let recentActivities = [];
 let cameraStream = null;
 let activeCaptureTarget = "";
+let availableCameras = [];
+let currentCameraDeviceId = "";
 const capturedPhotos = {
   handover: null,
   room: null,
@@ -64,6 +66,7 @@ const refs = {
   cameraCanvas: document.getElementById("camera-canvas"),
   cameraClose: document.getElementById("camera-close"),
   cameraCancel: document.getElementById("camera-cancel"),
+  cameraSwitch: document.getElementById("camera-switch"),
   cameraShot: document.getElementById("camera-shot")
 };
 
@@ -136,6 +139,7 @@ function bindEvents() {
   });
   refs.cameraClose.addEventListener("click", closeCamera);
   refs.cameraCancel.addEventListener("click", closeCamera);
+  refs.cameraSwitch.addEventListener("click", switchCamera);
   refs.cameraShot.addEventListener("click", captureActivePhoto);
   refs.cameraModal.addEventListener("click", (event) => {
     if (event.target === refs.cameraModal) closeCamera();
@@ -152,7 +156,7 @@ function renderSummary() {
   const kloter28 = pilgrims.filter((p) => p.kloter === "28").length;
   const kloter30 = pilgrims.filter((p) => p.kloter === "30").length;
   const roomCount = rooms.length;
-  const cloudLabel = db ? "Firebase aktif" : "Mode lokal";
+  const cloudLabel = db && cloudReady ? "Firebase + Cloudinary aktif" : "Mode lokal";
 
   refs.summary.innerHTML = [
     ["Total Jemaah", pilgrims.length],
@@ -336,21 +340,25 @@ async function submitWithPhoto(form, photo, payload, collectionName, label) {
     const uploadedPhoto = await uploadPhoto(photo.blob, payload, collectionName);
     const record = {
       ...payload,
-      photoUrl: uploadedPhoto?.secure_url || photo.dataUrl,
+      photoUrl: uploadedPhoto?.secure_url || "",
       photoPublicId: uploadedPhoto?.public_id || "",
       photoStatus: uploadedPhoto ? "uploaded" : "local_only",
       watermark: photo.watermark,
       createdAt: new Date().toISOString()
     };
+    const localRecord = {
+      ...record,
+      localPhotoDataUrl: uploadedPhoto ? "" : photo.dataUrl
+    };
 
-    await saveRecord(collectionName, record);
+    await saveRecord(collectionName, record, localRecord);
     addLocalActivity({
       label,
       title: payload.pilgrimName || payload.title || payload.roomId || payload.category,
       subtitle: `${payload.officerName} · ${new Date(record.createdAt).toLocaleString("id-ID")}`,
       collectionName
     });
-    showToast(`${label} tersimpan.`);
+    showToast(uploadedPhoto ? `${label} tersimpan.` : `${label} tersimpan lokal. Cloudinary belum aktif.`);
   } catch (err) {
     console.error(err);
     showToast(err.message || "Gagal menyimpan data.", "error");
@@ -385,34 +393,115 @@ async function openCamera(target) {
   refs.cameraTitle.textContent = getCaptureTitle(target);
   refs.cameraModal.classList.remove("hidden");
   refs.cameraModal.setAttribute("aria-hidden", "false");
+  refs.cameraSwitch.classList.add("hidden");
 
   try {
-    cameraStream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode: { ideal: "environment" },
-        width: { ideal: 1600 },
-        height: { ideal: 1200 }
-      },
-      audio: false
-    });
-    refs.cameraVideo.srcObject = cameraStream;
-    await waitForVideoReady();
+    if (!navigator.mediaDevices?.getUserMedia) {
+      throw new Error("Browser belum mendukung kamera langsung.");
+    }
+    await startPreferredCamera();
   } catch (err) {
     console.error(err);
     closeCamera();
-    showToast("Kamera tidak dapat dibuka. Pastikan izin kamera aktif.", "error");
+    showToast(err.message || "Kamera tidak dapat dibuka. Pastikan izin kamera aktif.", "error");
   }
 }
 
-function closeCamera() {
-  if (cameraStream) {
-    cameraStream.getTracks().forEach((track) => track.stop());
-    cameraStream = null;
+async function startPreferredCamera() {
+  await startCameraWithConstraints({
+    video: {
+      facingMode: { ideal: "environment" },
+      width: { ideal: 1600 },
+      height: { ideal: 1200 }
+    },
+    audio: false
+  });
+  await refreshCameraDevices();
+
+  const track = cameraStream?.getVideoTracks()[0];
+  const rearDevice = findRearCamera();
+  if (rearDevice && isFrontCameraTrack(track) && rearDevice.deviceId !== currentCameraDeviceId) {
+    await startCameraDevice(rearDevice.deviceId);
   }
+
+  updateCameraSwitchVisibility();
+  const activeTrack = cameraStream?.getVideoTracks()[0];
+  if (!findRearCamera() && isFrontCameraTrack(activeTrack)) {
+    showToast("Kamera belakang tidak terdeteksi. Menggunakan kamera yang tersedia.", "error");
+  }
+}
+
+async function startCameraWithConstraints(constraints) {
+  stopCameraStream();
+  cameraStream = await navigator.mediaDevices.getUserMedia(constraints);
+  refs.cameraVideo.srcObject = cameraStream;
+  await waitForVideoReady();
+  currentCameraDeviceId = cameraStream.getVideoTracks()[0]?.getSettings().deviceId || "";
+}
+
+async function startCameraDevice(deviceId) {
+  await startCameraWithConstraints({
+    video: {
+      deviceId: { exact: deviceId },
+      width: { ideal: 1600 },
+      height: { ideal: 1200 }
+    },
+    audio: false
+  });
+}
+
+async function refreshCameraDevices() {
+  if (!navigator.mediaDevices?.enumerateDevices) return;
+  const devices = await navigator.mediaDevices.enumerateDevices();
+  availableCameras = devices.filter((device) => device.kind === "videoinput");
+}
+
+async function switchCamera() {
+  if (availableCameras.length < 2) return;
+  const currentIndex = availableCameras.findIndex((device) => device.deviceId === currentCameraDeviceId);
+  const nextCamera = availableCameras[(currentIndex + 1 + availableCameras.length) % availableCameras.length];
+  if (!nextCamera) return;
+
+  try {
+    await startCameraDevice(nextCamera.deviceId);
+    updateCameraSwitchVisibility();
+  } catch (err) {
+    console.error(err);
+    showToast("Gagal mengganti kamera.", "error");
+  }
+}
+
+function updateCameraSwitchVisibility() {
+  refs.cameraSwitch.classList.toggle("hidden", availableCameras.length < 2);
+}
+
+function findRearCamera() {
+  return availableCameras.find((device) => {
+    const label = device.label.toLowerCase();
+    return /back|rear|environment|belakang|wide|ultra/.test(label);
+  });
+}
+
+function isFrontCameraTrack(track) {
+  if (!track) return false;
+  const settings = track.getSettings?.() || {};
+  const label = track.label.toLowerCase();
+  return settings.facingMode === "user" || /front|depan|selfie/.test(label);
+}
+
+function closeCamera() {
+  stopCameraStream();
   refs.cameraVideo.removeAttribute("srcObject");
   refs.cameraVideo.srcObject = null;
+  refs.cameraSwitch.classList.add("hidden");
   refs.cameraModal.classList.add("hidden");
   refs.cameraModal.setAttribute("aria-hidden", "true");
+}
+
+function stopCameraStream() {
+  if (!cameraStream) return;
+  cameraStream.getTracks().forEach((track) => track.stop());
+  cameraStream = null;
 }
 
 async function captureActivePhoto() {
@@ -460,6 +549,9 @@ async function createWatermarkedPhoto(payload) {
   const video = refs.cameraVideo;
   const canvas = refs.cameraCanvas;
   const ctx = canvas.getContext("2d");
+  if (document.fonts?.ready) {
+    await document.fonts.ready.catch(() => {});
+  }
   const maxWidth = 1600;
   const scale = Math.min(1, maxWidth / video.videoWidth);
   canvas.width = Math.round(video.videoWidth * scale);
@@ -468,7 +560,7 @@ async function createWatermarkedPhoto(payload) {
   drawWatermark(ctx, canvas, payload);
 
   const dataUrl = canvas.toDataURL("image/jpeg", 0.88);
-  const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.88));
+  const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.88)) || dataUrlToBlob(dataUrl);
   return {
     blob,
     dataUrl,
@@ -483,14 +575,16 @@ function drawWatermark(ctx, canvas, payload) {
   const titleSize = Math.max(22, Math.round(w * 0.03));
   const textSize = Math.max(17, Math.round(w * 0.021));
   const lineGap = Math.round(textSize * 1.35);
-  const lines = [
-    payload.title,
+  const maxTextWidth = w - pad * 2;
+  const title = payload.title || "Operasional Jemaah Gorontalo 2026";
+  const detailRows = [
     payload.subject,
     payload.location,
     `Petugas: ${payload.officerName}`,
     `Waktu: ${payload.timestampDisplay}`
   ].filter(Boolean);
-  const boxHeight = pad * 2 + titleSize + lineGap * (lines.length - 1);
+  const lines = detailRows.flatMap((line) => wrapCanvasText(ctx, line, maxTextWidth, `500 ${textSize}px Poppins, Arial, sans-serif`)).slice(0, 6);
+  const boxHeight = pad * 2 + titleSize + lineGap * Math.max(1, lines.length);
   const y = h - boxHeight;
 
   const gradient = ctx.createLinearGradient(0, y, 0, h);
@@ -502,15 +596,54 @@ function drawWatermark(ctx, canvas, payload) {
 
   ctx.fillStyle = "rgba(255,255,255,0.96)";
   ctx.font = `700 ${titleSize}px Poppins, Arial, sans-serif`;
-  ctx.fillText(lines[0], pad, y + pad + titleSize);
+  ctx.fillText(trimCanvasText(ctx, title, maxTextWidth), pad, y + pad + titleSize);
 
   ctx.font = `500 ${textSize}px Poppins, Arial, sans-serif`;
-  lines.slice(1).forEach((line, index) => {
+  lines.forEach((line, index) => {
     ctx.fillText(line, pad, y + pad + titleSize + lineGap * (index + 1));
   });
 
   ctx.fillStyle = "#c69837";
   ctx.fillRect(pad, y + pad - 8, Math.min(210, w * 0.18), 5);
+}
+
+function wrapCanvasText(ctx, text, maxWidth, font) {
+  ctx.font = font;
+  const words = String(text).split(/\s+/).filter(Boolean);
+  const lines = [];
+  let line = "";
+
+  words.forEach((word) => {
+    const testLine = line ? `${line} ${word}` : word;
+    if (ctx.measureText(testLine).width <= maxWidth) {
+      line = testLine;
+      return;
+    }
+    if (line) lines.push(line);
+    line = trimCanvasText(ctx, word, maxWidth);
+  });
+
+  if (line) lines.push(line);
+  return lines;
+}
+
+function trimCanvasText(ctx, text, maxWidth) {
+  const value = String(text);
+  if (ctx.measureText(value).width <= maxWidth) return value;
+  let trimmed = value;
+  while (trimmed.length > 1 && ctx.measureText(`${trimmed}...`).width > maxWidth) {
+    trimmed = trimmed.slice(0, -1);
+  }
+  return `${trimmed}...`;
+}
+
+function dataUrlToBlob(dataUrl) {
+  const [header, base64] = dataUrl.split(",");
+  const mime = header.match(/data:(.*?);/)?.[1] || "image/jpeg";
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return new Blob([bytes], { type: mime });
 }
 
 function buildWatermarkPayload(target) {
@@ -584,9 +717,9 @@ function clearCapturedPhoto(target) {
   preview.classList.add("hidden");
 }
 
-async function saveRecord(collectionName, record) {
-  if (!db) {
-    cachePendingRecord(collectionName, record);
+async function saveRecord(collectionName, record, localRecord = record) {
+  if (!db || record.photoStatus !== "uploaded") {
+    cachePendingRecord(collectionName, localRecord);
     return;
   }
 

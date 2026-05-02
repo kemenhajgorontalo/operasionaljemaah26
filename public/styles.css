@@ -446,6 +446,7 @@ textarea {
   justify-content: space-between;
   gap: 10px;
   align-items: center;
+  flex-wrap: wrap;
 }
 
 .camera-head strong {
@@ -473,7 +474,8 @@ textarea {
 }
 
 .camera-actions > * {
-  flex: 1;
+  flex: 1 1 140px;
+  min-height: 44px;
 }
 
 .skeleton-card {

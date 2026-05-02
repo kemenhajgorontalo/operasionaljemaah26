@@ -42,6 +42,14 @@ Isi `public/config.js` dengan `CLOUD_NAME`, `UPLOAD_PRESET`, dan `FOLDER`.
 
 Upload preset harus bertipe unsigned agar bisa dipakai langsung dari static web app.
 
+## Audit Mobile dan Penyimpanan
+
+- Aplikasi dirancang mobile-first dan kamera dipanggil dengan `getUserMedia`, sehingga harus dibuka dari HTTPS pada Android/iOS. Preview Cloudflare Tunnel sudah memenuhi syarat HTTPS.
+- Kamera meminta kamera belakang lebih dulu. Setelah izin kamera diberikan, aplikasi membaca daftar kamera perangkat, berpindah otomatis jika kamera depan yang aktif, dan menyediakan tombol `Ganti Kamera` sebagai mitigasi perangkat yang salah memilih kamera.
+- Foto bukti selalu dibuat dari kamera aplikasi, diberi watermark di canvas, lalu diupload ke Cloudinary sebelum record dikirim ke Firestore.
+- Jika Cloudinary belum aktif atau gagal dikonfigurasi, record disimpan lokal di perangkat dan tidak dikirim ke Firestore untuk menghindari penyimpanan base64 foto besar di database.
+- Firestore hanya menerima record operasional dengan `photoUrl` Cloudinary dan metadata watermark.
+
 ## Menjalankan Lokal
 
 ```bash

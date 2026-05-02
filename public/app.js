@@ -17,6 +17,7 @@ const GALLERY_CATEGORY_LABELS = {
 };
 const PHOTO_PAGE_SIZE = 12;
 const REPORT_PAGE_SIZE = 14;
+const ACTIVITY_PAGE_SIZE = 6;
 
 let db = null;
 let firebaseApi = null;
@@ -39,6 +40,7 @@ let allRecords = {
 };
 let photoCurrentPage = 1;
 let reportCurrentPage = 1;
+let activityCurrentPage = 1;
 let filteredPhotoRows = [];
 let filteredReportRows = [];
 const capturedPhotos = {
@@ -84,6 +86,9 @@ const refs = {
   galleryPreview: document.getElementById("gallery-preview"),
   galleryNote: document.getElementById("gallery-note"),
   activityList: document.getElementById("activity-list"),
+  activityPrev: document.getElementById("activity-prev"),
+  activityNext: document.getElementById("activity-next"),
+  activityPageInfo: document.getElementById("activity-page-info"),
   clearLocal: document.getElementById("clear-local"),
   gallerySyncStatus: document.getElementById("gallery-sync-status"),
   refreshGallery: document.getElementById("refresh-gallery"),
@@ -236,9 +241,18 @@ function bindEvents() {
     reportCurrentPage += 1;
     renderServiceReport();
   });
+  refs.activityPrev.addEventListener("click", () => {
+    activityCurrentPage = Math.max(1, activityCurrentPage - 1);
+    renderActivities();
+  });
+  refs.activityNext.addEventListener("click", () => {
+    activityCurrentPage += 1;
+    renderActivities();
+  });
   refs.clearLocal.addEventListener("click", () => {
     localStorage.removeItem(LOCAL_ACTIVITY_KEY);
     recentActivities = [];
+    activityCurrentPage = 1;
     renderActivities();
     showToast("Cache aktivitas lokal dibersihkan.");
   });
@@ -1172,42 +1186,89 @@ function formatRecordDate(row) {
 }
 
 async function loadRecentActivities() {
-  recentActivities = getLocalActivities();
-  if (db) {
-    try {
-      const handoverCollection = CONFIG.COLLECTIONS?.HANDOVER || "handover_records";
-      const snap = await firebaseApi.getDocs(firebaseApi.query(
-        firebaseApi.collection(db, handoverCollection),
-        firebaseApi.orderBy("createdAtServer", "desc"),
-        firebaseApi.limit(8)
-      ));
-      const rows = snap.docs.map((doc) => doc.data()).map((row) => ({
-        label: HANDOVER_LABELS[row.type] || row.type || "Serah Terima",
-        title: row.pilgrimName || row.noPorsi || "Record",
-        subtitle: `${row.officerName || "Petugas"} · ${row.createdAt || ""}`,
-        collectionName: handoverCollection
-      }));
-      recentActivities = [...rows, ...recentActivities].slice(0, 12);
-    } catch (err) {
-      console.warn(err);
-    }
-  }
+  recentActivities = buildRecentActivities();
+  activityCurrentPage = 1;
   renderActivities();
 }
 
 function renderActivities() {
-  refs.activityList.innerHTML = recentActivities.length ? recentActivities.map((item) => `
+  const totalPages = Math.max(1, Math.ceil(recentActivities.length / ACTIVITY_PAGE_SIZE));
+  activityCurrentPage = Math.min(totalPages, Math.max(1, activityCurrentPage));
+  const start = (activityCurrentPage - 1) * ACTIVITY_PAGE_SIZE;
+  const pageRows = recentActivities.slice(start, start + ACTIVITY_PAGE_SIZE);
+
+  refs.activityList.innerHTML = pageRows.length ? pageRows.map((item) => `
     <div class="activity-item">
       <strong>${escapeHtml(item.label)} · ${escapeHtml(item.title)}</strong>
       <span>${escapeHtml(item.subtitle || item.collectionName || "")}</span>
     </div>
   `).join("") : '<div class="empty-state">Belum ada aktivitas pada perangkat ini.</div>';
+
+  refs.activityPageInfo.textContent = recentActivities.length
+    ? `Halaman ${activityCurrentPage} dari ${totalPages} · ${recentActivities.length} aktivitas`
+    : "Belum ada aktivitas";
+  refs.activityPrev.disabled = activityCurrentPage <= 1;
+  refs.activityNext.disabled = activityCurrentPage >= totalPages;
 }
 
 function addLocalActivity(item) {
-  recentActivities = [item, ...recentActivities].slice(0, 12);
-  localStorage.setItem(LOCAL_ACTIVITY_KEY, JSON.stringify(recentActivities));
+  const stampedItem = {
+    ...item,
+    time: item.time || Date.now()
+  };
+  recentActivities = [stampedItem, ...recentActivities].slice(0, 100);
+  localStorage.setItem(LOCAL_ACTIVITY_KEY, JSON.stringify(recentActivities.slice(0, 50)));
+  activityCurrentPage = 1;
   renderActivities();
+}
+
+function buildRecentActivities() {
+  const rows = [
+    ...allRecords.handover.map((row) => ({
+      label: HANDOVER_LABELS[row.type] || row.type || "Serah Terima",
+      title: row.pilgrimName || row.noPorsi || "Jemaah",
+      subtitle: `${row.officerName || "Petugas"} · ${formatRecordDate(row)}`,
+      collectionName: CONFIG.COLLECTIONS?.HANDOVER || "handover_records",
+      time: getRecordTime(row)
+    })),
+    ...allRecords.rooms.map((row) => ({
+      label: "Distribusi Kamar",
+      title: `Kamar ${row.room || row.roomId || "-"}`,
+      subtitle: `${row.officerName || "Petugas"} · ${formatRecordDate(row)}`,
+      collectionName: CONFIG.COLLECTIONS?.ROOM_DELIVERIES || "room_deliveries",
+      time: getRecordTime(row)
+    })),
+    ...allRecords.lost.map((row) => ({
+      label: `Lost and Found ${getLostStatusLabel(row.status)}`,
+      title: row.title || "Barang",
+      subtitle: `${row.officerName || "Petugas"} · ${formatRecordDate(row)}`,
+      collectionName: CONFIG.COLLECTIONS?.LOST_FOUND || "lost_found",
+      time: getRecordTime(row)
+    })),
+    ...allRecords.gallery.map((row) => ({
+      label: GALLERY_CATEGORY_LABELS[row.category] || "Galeri",
+      title: row.note || "Foto kegiatan",
+      subtitle: `${row.officerName || "Petugas"} · ${formatRecordDate(row)}`,
+      collectionName: CONFIG.COLLECTIONS?.GALLERY || "gallery_photos",
+      time: getRecordTime(row)
+    })),
+    ...getLocalActivities().map((row) => ({
+      ...row,
+      time: getRecordTime(row)
+    }))
+  ];
+
+  const seen = new Set();
+  return rows
+    .filter((row) => row.title || row.subtitle)
+    .filter((row) => {
+      const key = [row.collectionName, row.label, row.title, row.subtitle].join("|");
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .sort((a, b) => b.time - a.time)
+    .slice(0, 100);
 }
 
 function getLocalActivities() {

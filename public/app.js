@@ -65,6 +65,7 @@ const refs = {
 document.addEventListener("DOMContentLoaded", init);
 
 async function init() {
+  enforceRearCameraInputs();
   refs.officerName.value = localStorage.getItem("asramahaji_officer_name") || "";
   refs.officerName.addEventListener("input", () => {
     localStorage.setItem("asramahaji_officer_name", refs.officerName.value.trim());
@@ -78,6 +79,13 @@ async function init() {
   renderRooms();
   renderPilgrims();
   await loadRecentActivities();
+}
+
+function enforceRearCameraInputs() {
+  [refs.handoverPhoto, refs.roomPhoto, refs.lostPhoto, refs.galleryPhoto].forEach((input) => {
+    input.setAttribute("accept", "image/*");
+    input.setAttribute("capture", "environment");
+  });
 }
 
 async function loadSeedData() {

@@ -12,7 +12,23 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <header class="app-header">
+  <section id="auth-screen" class="auth-screen">
+    <form id="auth-form" class="auth-card">
+      <img src="assets/logo-kementerian-haji-dan-umrah.png" alt="Logo Kementerian Haji dan Umrah">
+      <div>
+        <h1>Operasional Jemaah</h1>
+        <p>Masukkan password untuk membuka aplikasi.</p>
+      </div>
+      <div class="field">
+        <label for="app-password">Password</label>
+        <input id="app-password" type="password" inputmode="numeric" autocomplete="current-password" autofocus required>
+      </div>
+      <p id="auth-error" class="auth-error hidden">Password salah.</p>
+      <button class="primary-btn" type="submit">Masuk</button>
+    </form>
+  </section>
+
+  <header class="app-header hidden">
     <img src="assets/logo-kementerian-haji-dan-umrah.png" alt="Logo Kementerian Haji dan Umrah">
     <div>
       <h1>Operasional Jemaah</h1>
@@ -20,7 +36,7 @@
     </div>
   </header>
 
-  <main class="app-shell">
+  <main class="app-shell hidden">
     <section id="loading-state" class="loading-state">
       <div class="loader-mark"></div>
       <div>
@@ -50,6 +66,7 @@
         <label for="search-input">Cari Jemaah</label>
         <input id="search-input" type="search" placeholder="Nama, porsi, kamar, daerah">
       </div>
+      <div id="search-results" class="search-results hidden" aria-live="polite"></div>
     </section>
 
     <section id="summary" class="summary-grid"></section>
@@ -60,8 +77,16 @@
     </nav>
 
     <section id="operations-page">
+    <nav class="ops-nav" aria-label="Aksi operasional cepat">
+      <button type="button" data-scroll-target="pilgrim-list-panel">Jemaah</button>
+      <button type="button" data-scroll-target="handover-form">Serah Terima</button>
+      <button type="button" data-scroll-target="room-form">Distribusi Koper</button>
+      <button type="button" data-scroll-target="lost-form">Lost & Found</button>
+      <button type="button" data-scroll-target="gallery-form">Galeri</button>
+      <button type="button" data-scroll-target="activity-panel">Aktivitas</button>
+    </nav>
     <section class="workspace">
-      <aside class="panel list-panel">
+      <aside id="pilgrim-list-panel" class="panel list-panel">
         <div class="panel-head">
         <h2>Data Jemaah</h2>
         <span id="result-count"></span>
@@ -73,7 +98,7 @@
         </div>
       </aside>
 
-      <section class="panel detail-panel">
+      <section class="panel detail-panel" id="pilgrim-detail-panel">
         <div id="empty-state" class="empty-state">
           Pilih jemaah untuk mencatat living cost, kartu akomodasi, gelang, atau koper.
         </div>
@@ -115,12 +140,36 @@
       </section>
     </section>
 
-    <section class="panel forms-grid">
+    <section class="panel forms-grid" id="entry-panels">
       <form id="room-form" class="action-form">
         <h3>Distribusi Koper per Kamar</h3>
         <div class="field">
-          <label for="room-select">Kamar</label>
-          <select id="room-select" required></select>
+          <label for="room-search">Cari Kamar</label>
+          <input id="room-search" type="search" list="room-options" placeholder="Ketik nomor kamar, contoh: 101">
+          <datalist id="room-options"></datalist>
+          <input id="room-selected-id" type="hidden">
+        </div>
+        <div class="room-entry-grid">
+          <div class="field">
+            <label for="room-kloter">Kloter</label>
+            <select id="room-kloter" disabled>
+              <option value="">Pilih kloter</option>
+              <option value="28">Kloter 28</option>
+              <option value="30">Kloter 30</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="room-hotel">Hotel</label>
+            <select id="room-hotel" disabled></select>
+          </div>
+          <div class="field">
+            <label for="room-floor">Lantai</label>
+            <input id="room-floor" type="text" placeholder="Terisi otomatis" readonly>
+          </div>
+          <div class="field">
+            <label for="room-number">Nomor Kamar</label>
+            <input id="room-number" type="text" placeholder="Terisi otomatis" readonly>
+          </div>
         </div>
         <div class="field">
           <label>Foto Pintu/Koper</label>
@@ -186,7 +235,7 @@
       </form>
     </section>
 
-    <section class="panel">
+    <section class="panel" id="activity-panel">
       <div class="panel-head">
         <h2>Aktivitas Terakhir</h2>
       </div>
@@ -207,6 +256,14 @@
             <span id="gallery-sync-status"></span>
           </div>
           <button id="refresh-gallery" class="ghost-btn" type="button">Muat Ulang</button>
+        </div>
+
+        <div class="feature-strip feature-strip-gallery">
+          <div class="feature-strip-label">Galeri Foto</div>
+          <div>
+            <strong>Dokumentasi visual</strong>
+            <span>Foto kegiatan, serah terima, kamar, dan lost and found.</span>
+          </div>
         </div>
 
         <div class="report-filters">
@@ -255,9 +312,24 @@
 
         <div id="report-summary" class="summary-grid compact-summary"></div>
 
+        <section class="export-panel export-panel-gallery" aria-label="Export CSV">
+          <div>
+            <h3>Export CSV</h3>
+            <span>Unduh data dari galeri dan filter foto yang aktif.</span>
+          </div>
+          <div class="export-actions">
+            <button id="export-all-records" class="ghost-btn" type="button">Semua Entry</button>
+            <button id="export-handover-records" class="ghost-btn" type="button">Serah Terima</button>
+            <button id="export-room-records" class="ghost-btn" type="button">Distribusi Kamar</button>
+            <button id="export-lost-records" class="ghost-btn" type="button">Lost and Found</button>
+            <button id="export-gallery-records" class="ghost-btn" type="button">Galeri</button>
+            <button id="export-service-report" class="ghost-btn" type="button">Report Layanan</button>
+          </div>
+        </section>
+
         <div class="gallery-report-grid">
-          <section>
-            <div class="section-head">
+          <section class="gallery-segment gallery-segment-photo">
+            <div class="segment-head">
               <h3>Foto Terdokumentasi</h3>
               <span id="photo-count"></span>
             </div>
@@ -269,8 +341,15 @@
             </div>
           </section>
 
-          <section>
-            <div class="section-head">
+          <section class="gallery-segment gallery-segment-report">
+            <div class="feature-strip feature-strip-report">
+              <div class="feature-strip-label">Report Layanan</div>
+              <div>
+                <strong>Ringkasan status</strong>
+                <span>Daftar layanan, progres, dan status pelayanan jemaah.</span>
+              </div>
+            </div>
+            <div class="segment-head">
               <h3>Report Layanan</h3>
               <span id="report-count"></span>
             </div>

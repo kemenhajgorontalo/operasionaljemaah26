@@ -17,6 +17,8 @@ const GALLERY_CATEGORY_LABELS = {
 const PHOTO_PAGE_SIZE = 12;
 const REPORT_PAGE_SIZE = 14;
 const ACTIVITY_PAGE_SIZE = 6;
+const AUTH_PASSWORD = "123456";
+const AUTH_SESSION_KEY = "asramahaji_authenticated";
 
 let db = null;
 let firebaseApi = null;
@@ -50,6 +52,12 @@ const capturedPhotos = {
 };
 
 const refs = {
+  authScreen: document.getElementById("auth-screen"),
+  authForm: document.getElementById("auth-form"),
+  authPassword: document.getElementById("app-password"),
+  authError: document.getElementById("auth-error"),
+  appHeader: document.querySelector(".app-header"),
+  appShell: document.querySelector(".app-shell"),
   operationsPage: document.getElementById("operations-page"),
   galleryPage: document.getElementById("gallery-page"),
   tabOperations: document.getElementById("tab-operations"),
@@ -59,7 +67,9 @@ const refs = {
   searchInput: document.getElementById("search-input"),
   loadingState: document.getElementById("loading-state"),
   summary: document.getElementById("summary"),
+  opsNav: document.querySelector(".ops-nav"),
   resultCount: document.getElementById("result-count"),
+  searchResults: document.getElementById("search-results"),
   pilgrimList: document.getElementById("pilgrim-list"),
   emptyState: document.getElementById("empty-state"),
   pilgrimDetail: document.getElementById("pilgrim-detail"),
@@ -72,7 +82,13 @@ const refs = {
   handoverPreview: document.getElementById("handover-preview"),
   handoverNote: document.getElementById("handover-note"),
   roomForm: document.getElementById("room-form"),
-  roomSelect: document.getElementById("room-select"),
+  roomSearch: document.getElementById("room-search"),
+  roomOptions: document.getElementById("room-options"),
+  roomSelectedId: document.getElementById("room-selected-id"),
+  roomKloter: document.getElementById("room-kloter"),
+  roomHotel: document.getElementById("room-hotel"),
+  roomFloor: document.getElementById("room-floor"),
+  roomNumber: document.getElementById("room-number"),
   roomPreview: document.getElementById("room-preview"),
   roomNote: document.getElementById("room-note"),
   lostForm: document.getElementById("lost-form"),
@@ -106,6 +122,12 @@ const refs = {
   reportPrev: document.getElementById("report-prev"),
   reportNext: document.getElementById("report-next"),
   reportPageInfo: document.getElementById("report-page-info"),
+  exportAllRecords: document.getElementById("export-all-records"),
+  exportHandoverRecords: document.getElementById("export-handover-records"),
+  exportRoomRecords: document.getElementById("export-room-records"),
+  exportLostRecords: document.getElementById("export-lost-records"),
+  exportGalleryRecords: document.getElementById("export-gallery-records"),
+  exportServiceReport: document.getElementById("export-service-report"),
   toast: document.getElementById("toast"),
   cameraModal: document.getElementById("camera-modal"),
   cameraTitle: document.getElementById("camera-title"),
@@ -118,7 +140,40 @@ const refs = {
   cameraShot: document.getElementById("camera-shot")
 };
 
-document.addEventListener("DOMContentLoaded", init);
+document.addEventListener("DOMContentLoaded", boot);
+
+function boot() {
+  refs.authForm.addEventListener("submit", handleAuthSubmit);
+
+  if (sessionStorage.getItem(AUTH_SESSION_KEY) === "true") {
+    unlockApp();
+    return;
+  }
+
+  refs.authScreen.classList.remove("hidden");
+  refs.authPassword.focus();
+}
+
+function handleAuthSubmit(event) {
+  event.preventDefault();
+  if (refs.authPassword.value === AUTH_PASSWORD) {
+    sessionStorage.setItem(AUTH_SESSION_KEY, "true");
+    refs.authError.classList.add("hidden");
+    unlockApp();
+    return;
+  }
+
+  refs.authPassword.value = "";
+  refs.authError.classList.remove("hidden");
+  refs.authPassword.focus();
+}
+
+function unlockApp() {
+  refs.authScreen.classList.add("hidden");
+  refs.appHeader.classList.remove("hidden");
+  refs.appShell.classList.remove("hidden");
+  init();
+}
 
 async function init() {
   setLoading(true, "Memuat data jemaah", "Menyiapkan Kloter 28, Kloter 30, dan data kamar.");
@@ -178,13 +233,18 @@ function bindEvents() {
   refs.tabOperations.addEventListener("click", () => setView("operations"));
   refs.tabGallery.addEventListener("click", () => setView("gallery"));
   refs.kloterFilter.addEventListener("change", () => {
+    clearRoomEntry();
     renderPilgrims();
     renderRooms();
     renderGalleryPage();
   });
   refs.searchInput.addEventListener("input", renderPilgrims);
   refs.handoverType.addEventListener("change", () => clearCapturedPhoto("handover"));
-  refs.roomSelect.addEventListener("change", () => clearCapturedPhoto("room"));
+  refs.roomSearch.addEventListener("input", handleRoomSearchInput);
+  [refs.roomKloter, refs.roomHotel, refs.roomFloor, refs.roomNumber].forEach((input) => {
+    input.addEventListener("input", handleRoomManualInput);
+    input.addEventListener("change", handleRoomManualInput);
+  });
   refs.lostStatus.addEventListener("change", () => clearCapturedPhoto("lost"));
   refs.galleryCategory.addEventListener("change", () => clearCapturedPhoto("gallery"));
   refs.handoverForm.addEventListener("submit", handleHandoverSubmit);
@@ -247,6 +307,15 @@ function bindEvents() {
     activityCurrentPage += 1;
     renderActivities();
   });
+  refs.exportAllRecords.addEventListener("click", () => exportOperationalRecords("all"));
+  refs.exportHandoverRecords.addEventListener("click", () => exportOperationalRecords("handover"));
+  refs.exportRoomRecords.addEventListener("click", () => exportOperationalRecords("rooms"));
+  refs.exportLostRecords.addEventListener("click", () => exportOperationalRecords("lost"));
+  refs.exportGalleryRecords.addEventListener("click", () => exportOperationalRecords("gallery"));
+  refs.exportServiceReport.addEventListener("click", exportCurrentServiceReport);
+  refs.opsNav?.querySelectorAll("[data-scroll-target]").forEach((button) => {
+    button.addEventListener("click", () => scrollToTarget(button.dataset.scrollTarget));
+  });
 }
 
 function setView(view) {
@@ -281,6 +350,7 @@ function renderSummary() {
 function renderPilgrims() {
   const filtered = getFilteredPilgrims().slice(0, 80);
   refs.resultCount.textContent = `${filtered.length} tampil dari ${getFilteredPilgrims().length}`;
+  renderSearchResults(filtered);
 
   refs.pilgrimList.innerHTML = filtered.map((p) => `
     <button class="pilgrim-item ${p.id === selectedPilgrimId ? "active" : ""}" type="button" data-id="${escapeAttr(p.id)}">
@@ -294,6 +364,37 @@ function renderPilgrims() {
   `).join("");
 
   refs.pilgrimList.querySelectorAll(".pilgrim-item").forEach((button) => {
+    button.addEventListener("click", () => selectPilgrim(button.dataset.id));
+  });
+}
+
+function renderSearchResults(filtered) {
+  const term = refs.searchInput.value.trim();
+  const results = term ? filtered.slice(0, 6) : [];
+
+  if (!results.length) {
+    refs.searchResults.innerHTML = "";
+    refs.searchResults.classList.add("hidden");
+    return;
+  }
+
+  refs.searchResults.innerHTML = `
+    <div class="search-results-head">
+      <strong>Hasil Pencarian</strong>
+      <span>${results.length} cocok</span>
+    </div>
+    <div class="search-results-list">
+      ${results.map((p) => `
+        <button class="search-result-item ${p.id === selectedPilgrimId ? "active" : ""}" type="button" data-id="${escapeAttr(p.id)}">
+          <strong>${escapeHtml(p.name)}</strong>
+          <span>Porsi ${escapeHtml(p.noPorsi)} · Kloter ${escapeHtml(p.kloter)}</span>
+          <span>${escapeHtml(formatRoom(p))}</span>
+        </button>
+      `).join("")}
+    </div>
+  `;
+  refs.searchResults.classList.remove("hidden");
+  refs.searchResults.querySelectorAll(".search-result-item").forEach((button) => {
     button.addEventListener("click", () => selectPilgrim(button.dataset.id));
   });
 }
@@ -325,6 +426,7 @@ function selectPilgrim(id) {
   selectedPilgrim = pilgrims.find((p) => p.id === id) || null;
   renderPilgrims();
   renderDetail();
+  requestAnimationFrame(() => scrollToTarget("handover-form"));
 }
 
 function renderDetail() {
@@ -358,9 +460,109 @@ function renderDetail() {
 function renderRooms() {
   const kloter = refs.kloterFilter.value;
   const filteredRooms = rooms.filter((room) => !kloter || room.kloter === kloter);
-  refs.roomSelect.innerHTML = '<option value="">Pilih kamar</option>' + filteredRooms.map((room) => `
-    <option value="${escapeAttr(room.id)}">${escapeHtml(`Kloter ${room.kloter} · ${room.hotel} · Lt ${room.floor} · Kamar ${room.room} · ${room.pilgrims.length} jemaah`)}</option>
+  const selectedHotel = refs.roomHotel.value;
+  const hotels = [...new Set(rooms.map((room) => room.hotel).filter(Boolean))];
+
+  refs.roomOptions.innerHTML = filteredRooms.map((room) => `
+    <option value="${escapeAttr(getRoomOptionLabel(room))}" data-id="${escapeAttr(room.id)}"></option>
   `).join("");
+  refs.roomHotel.innerHTML = '<option value="">Pilih hotel</option>' + hotels.map((hotel) => `
+    <option value="${escapeAttr(hotel)}">${escapeHtml(hotel)}</option>
+  `).join("");
+  refs.roomHotel.value = hotels.includes(selectedHotel) ? selectedHotel : refs.roomHotel.value;
+}
+
+function handleRoomSearchInput() {
+  const room = findRoomBySearchValue(refs.roomSearch.value);
+  if (room) {
+    applyRoomEntry(room);
+    return;
+  }
+
+  refs.roomSelectedId.value = "";
+  clearCapturedPhoto("room");
+}
+
+function handleRoomManualInput() {
+  const selectedRoom = getSelectedRoom();
+  const stillMatchesSelection = selectedRoom
+    && refs.roomKloter.value === selectedRoom.kloter
+    && refs.roomHotel.value === selectedRoom.hotel
+    && refs.roomFloor.value.trim() === String(selectedRoom.floor || "")
+    && refs.roomNumber.value.trim() === String(selectedRoom.room || "");
+
+  if (!stillMatchesSelection) {
+    refs.roomSelectedId.value = "";
+  }
+  clearCapturedPhoto("room");
+}
+
+function applyRoomEntry(room) {
+  refs.roomSelectedId.value = room.id;
+  refs.roomSearch.value = getRoomOptionLabel(room);
+  refs.roomKloter.value = room.kloter || "";
+  refs.roomHotel.value = room.hotel || "";
+  refs.roomFloor.value = room.floor || "";
+  refs.roomNumber.value = room.room || "";
+  clearCapturedPhoto("room");
+}
+
+function clearRoomEntry() {
+  refs.roomSearch.value = "";
+  refs.roomSelectedId.value = "";
+  refs.roomKloter.value = "";
+  refs.roomHotel.value = "";
+  refs.roomFloor.value = "";
+  refs.roomNumber.value = "";
+  clearCapturedPhoto("room");
+}
+
+function scrollToTarget(targetId) {
+  const target = document.getElementById(targetId);
+  if (!target) return;
+  target.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function findRoomBySearchValue(value) {
+  const term = value.trim().toLowerCase();
+  if (!term) return null;
+  const kloter = refs.kloterFilter.value;
+  const searchableRooms = rooms.filter((room) => !kloter || room.kloter === kloter);
+  const exactLabelRoom = searchableRooms.find((room) => room.id.toLowerCase() === term || getRoomOptionLabel(room).toLowerCase() === term);
+  if (exactLabelRoom) return exactLabelRoom;
+
+  const roomNumberMatches = searchableRooms.filter((room) => String(room.room || "").toLowerCase() === term);
+  return roomNumberMatches.length === 1 ? roomNumberMatches[0] : null;
+}
+
+function getSelectedRoom() {
+  return rooms.find((item) => item.id === refs.roomSelectedId.value) || null;
+}
+
+function getRoomOptionLabel(room) {
+  return `${room.room} · Kloter ${room.kloter} · ${room.hotel} · Lt ${room.floor} · ${room.pilgrims.length} jemaah`;
+}
+
+function getRoomEntry() {
+  const selectedRoom = getSelectedRoom();
+  if (!selectedRoom) return null;
+
+  const roomNumber = refs.roomNumber.value.trim();
+  const kloter = refs.roomKloter.value;
+  const hotel = refs.roomHotel.value;
+  const floor = refs.roomFloor.value.trim();
+
+  if (!kloter || !hotel || !roomNumber) return null;
+
+  return {
+    selectedRoom,
+    roomId: selectedRoom.id,
+    kloter,
+    hotel,
+    floor,
+    room: roomNumber,
+    pilgrimCount: selectedRoom.pilgrims.length
+  };
 }
 
 async function handleHandoverSubmit(event) {
@@ -387,16 +589,17 @@ async function handleHandoverSubmit(event) {
 
 async function handleRoomSubmit(event) {
   event.preventDefault();
-  const room = rooms.find((item) => item.id === refs.roomSelect.value);
-  if (!room) return showToast("Pilih kamar terlebih dahulu.", "error");
+  const roomEntry = getRoomEntry();
+  if (!roomEntry) return showToast("Cari dan pilih kamar terlebih dahulu.", "error");
 
   const payload = {
-    roomId: room.id,
-    kloter: room.kloter,
-    hotel: room.hotel,
-    floor: room.floor,
-    room: room.room,
-    pilgrimCount: room.pilgrims.length,
+    roomId: roomEntry.roomId,
+    kloter: roomEntry.kloter,
+    hotel: roomEntry.hotel,
+    floor: roomEntry.floor,
+    room: roomEntry.room,
+    pilgrimCount: roomEntry.pilgrimCount,
+    sourceRoomId: roomEntry.selectedRoom?.id || "",
     note: refs.roomNote.value.trim(),
     officerName: getOfficerName(),
     source: "web"
@@ -405,6 +608,7 @@ async function handleRoomSubmit(event) {
   const saved = await submitWithPhoto(refs.roomForm, capturedPhotos.room, payload, CONFIG.COLLECTIONS?.ROOM_DELIVERIES || "room_deliveries", "Distribusi Kamar");
   if (!saved) return;
   refs.roomForm.reset();
+  refs.roomSelectedId.value = "";
   clearCapturedPhoto("room");
   renderRooms();
 }
@@ -799,11 +1003,11 @@ function buildWatermarkPayload(target) {
   }
 
   if (target === "room") {
-    const room = rooms.find((item) => item.id === refs.roomSelect.value);
+    const roomEntry = getRoomEntry();
     return {
       ...base,
-      subject: room ? `Kloter ${room.kloter} · ${room.pilgrims.length} jemaah` : "Kamar belum dipilih",
-      location: room ? `${room.hotel} · Lt ${room.floor} · Kamar ${room.room}` : ""
+      subject: roomEntry ? `Kloter ${roomEntry.kloter} · ${roomEntry.pilgrimCount} jemaah` : "Kamar belum diisi",
+      location: roomEntry ? `${roomEntry.hotel} · Lt ${roomEntry.floor || "-"} · Kamar ${roomEntry.room}` : ""
     };
   }
 
@@ -1240,6 +1444,133 @@ function buildRecentActivities() {
     })
     .sort((a, b) => b.time - a.time)
     .slice(0, 100);
+}
+
+function exportOperationalRecords(bucket) {
+  const recordBuckets = getExportRecordBuckets();
+  const selectedBuckets = bucket === "all" ? Object.keys(recordBuckets) : [bucket];
+  const rows = selectedBuckets.flatMap((key) => {
+    const meta = recordBuckets[key];
+    return (allRecords[key] || []).map((row) => flattenForCsv({
+      collectionLabel: meta.label,
+      collectionName: row.collectionName || meta.collectionName,
+      id: row.id || "",
+      ...row
+    }));
+  });
+
+  if (!rows.length) {
+    showToast("Belum ada data entry untuk diexport.", "error");
+    return;
+  }
+
+  downloadCsv(rows, `operasional-jemaah-${bucket}-entries`);
+  showToast(`${rows.length} entry CSV didownload.`);
+}
+
+function exportCurrentServiceReport() {
+  const rows = filteredReportRows.map((row) => flattenForCsv({
+    jenisReport: row.type === "room" ? "Kamar" : "Jemaah",
+    kloter: row.kloter,
+    namaAtauKamar: row.title,
+    detail: row.subtitle,
+    status: row.status,
+    statusLabel: row.statusLabel,
+    progres: row.progress,
+    id: row.id
+  }));
+
+  if (!rows.length) {
+    showToast("Tidak ada baris report untuk diexport.", "error");
+    return;
+  }
+
+  downloadCsv(rows, "operasional-jemaah-report-layanan");
+  showToast(`${rows.length} baris report CSV didownload.`);
+}
+
+function getExportRecordBuckets() {
+  return {
+    handover: {
+      label: "Serah Terima",
+      collectionName: CONFIG.COLLECTIONS?.HANDOVER || "handover_records"
+    },
+    rooms: {
+      label: "Distribusi Kamar",
+      collectionName: CONFIG.COLLECTIONS?.ROOM_DELIVERIES || "room_deliveries"
+    },
+    lost: {
+      label: "Lost and Found",
+      collectionName: CONFIG.COLLECTIONS?.LOST_FOUND || "lost_found"
+    },
+    gallery: {
+      label: "Galeri",
+      collectionName: CONFIG.COLLECTIONS?.GALLERY || "gallery_photos"
+    }
+  };
+}
+
+function flattenForCsv(value, prefix = "", output = {}) {
+  if (Array.isArray(value)) {
+    output[prefix] = value.map((item) => formatCsvValue(item)).join(" | ");
+    return output;
+  }
+
+  if (!value || typeof value !== "object" || value instanceof Date) {
+    output[prefix] = formatCsvValue(value);
+    return output;
+  }
+
+  Object.entries(value).forEach(([key, item]) => {
+    const nextKey = prefix ? `${prefix}.${key}` : key;
+    if (key === "localPhotoDataUrl" && typeof item === "string" && item.startsWith("data:")) {
+      output[nextKey] = "[foto lokal base64 tidak diexport]";
+      return;
+    }
+    if (item && typeof item === "object" && typeof item.toDate === "function") {
+      output[nextKey] = formatCsvValue(item.toDate());
+      return;
+    }
+    flattenForCsv(item, nextKey, output);
+  });
+
+  return output;
+}
+
+function formatCsvValue(value) {
+  if (value == null) return "";
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? "" : value.toISOString();
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+}
+
+function downloadCsv(rows, filenameBase) {
+  const headers = Array.from(rows.reduce((set, row) => {
+    Object.keys(row).forEach((key) => set.add(key));
+    return set;
+  }, new Set()));
+  const csv = [
+    headers.map(escapeCsvCell).join(","),
+    ...rows.map((row) => headers.map((header) => escapeCsvCell(row[header])).join(","))
+  ].join("\n");
+  const blob = new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${filenameBase}-${getExportTimestamp()}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function escapeCsvCell(value) {
+  const text = String(value ?? "");
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+function getExportTimestamp() {
+  return new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
 }
 
 function cachePendingRecord(collectionName, record) {

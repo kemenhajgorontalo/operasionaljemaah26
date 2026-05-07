@@ -25,6 +25,19 @@ Data master jemaah dan kamar diambil dari repository sumber:
 - `scripts/build_seed_data.js` - generator seed dari repo sumber
 - `docs/DATA_AUDIT.md` - catatan audit data sumber
 
+## Export CSV
+
+Tab `Galeri & Report` menyediakan tombol export CSV untuk:
+
+- semua entry operasional
+- `handover_records`
+- `room_deliveries`
+- `lost_found`
+- `gallery_photos`
+- report layanan sesuai filter yang sedang aktif
+
+Export memakai data Firebase yang sudah dimuat ke halaman dan cache lokal perangkat. Foto lokal berbentuk base64 tidak dimasukkan ke CSV agar ukuran file tetap wajar; URL foto Cloudinary tetap ikut diexport.
+
 ## Database Firestore
 
 Collection operasional yang disiapkan:
